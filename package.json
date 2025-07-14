@@ -1,0 +1,28 @@
+{
+  "name": "connect-ems-cli",
+  "version": "1.0.0",
+  "description": "The Connect EMS CLI is a npm-based cli to publish and deploy your Connect EMS Packages to our store.",
+  "main": "index.js",
+  "bin": {
+    "connect-ems": "index.js"
+  },
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kevin-kirch/connect-ems-cli.git"
+  },
+  "author": "Kevin Kirch",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/kevin-kirch/connect-ems-cli/issues"
+  },
+  "homepage": "https://github.com/kevin-kirch/connect-ems-cli#readme",
+  "dependencies": {
+    "commander": "^14.0.0"
+  },
+  "volta": {
+    "node": "22.17.0"
+  },
+  "devDependencies": {
+  }
+}
