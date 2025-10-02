@@ -6,6 +6,22 @@ You need a Developer Org to use the Connect EMS CLI. Reach out to info@connect-e
 If you own a verified Developer Org, you can create a new API key and use this one by providing the `--api-key <API KEY>` argument to your call.
 
 ## Installation
+To install the Connect EMS CLI, run:
+```bash
+npm install -g @connect-ems/cli
+```
+
+To install the Connect EMS CLI locally in your project, run:
+```bash
+npm run build
+npm link
+```
+
+## Usage
+To see all available commands, run:
+```bash
+connect-ems --help
+```
 
 
 
