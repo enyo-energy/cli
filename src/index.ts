@@ -6,6 +6,7 @@ import https from 'https';
 import path from 'path';
 import {createJiti} from 'jiti';
 import {runPackageInVM} from './run.js';
+import {installDevPackage} from './dev-package-installer.js';
 import type {ConnectPackageDefinition} from "../../connect-ems-api";
 
 const readConnectEmsPackageConfig = async (filePath = 'connect-ems.package.ts') => {
@@ -21,7 +22,7 @@ const readConnectEmsPackageConfig = async (filePath = 'connect-ems.package.ts') 
             }
         });
 
-        return await jiti(path.resolve(filePath)) as ConnectPackageDefinition;
+        return (await jiti(path.resolve(filePath))).default as ConnectPackageDefinition;
     } catch (error) {
         if (error instanceof Error) {
             console.error('Error reading connect-ems.package.ts:', error.message);
@@ -142,116 +143,125 @@ program.command('run')
         }
     });
 
-// TODO: adjust to upload a bundle with images for the store etc
-// TODO: read the package name from the definition file
+program.command('install')
+    .description('Build and install the package on a local Connect EMS device for development')
+    .option('--host <host>', 'Device IP address or hostname', 'localhost')
+    .option('--port <port>', 'Device port number', '6021')
+    .requiredOption('--token <token>', 'Debug token from the Connect EMS device')
+    .action(async (options) => {
+        try {
+            if (!fs.existsSync('connect-ems.package.ts')) {
+                throw new Error('connect-ems.package.ts not found in current directory');
+            }
+
+            console.log('Reading package configuration...');
+            const config = await readConnectEmsPackageConfig('connect-ems.package.ts');
+            console.log(`Loaded package: ${config.packageName} v${config.version}`);
+
+            const deviceHost = options.host;
+            const devicePort = parseInt(options.port, 10);
+
+            if (isNaN(devicePort) || devicePort <= 0 || devicePort > 65535) {
+                throw new Error(`Invalid port number: ${options.port}`);
+            }
+
+            await installDevPackage(deviceHost, devicePort, options.token, config);
+
+        } catch (error) {
+            if (error instanceof Error) {
+                console.error('Error installing package:', error.message);
+            } else {
+                console.error('Unknown error installing package:', error);
+            }
+            process.exit(1);
+        }
+    });
+
 program.command('release')
     .description('Create a new release for your Connect EMS app and upload to the connect EMS store.')
     .requiredOption('--api-key <apiKey>', 'Your Developer Org API Key')
-    .requiredOption('--package <packageName>', 'The Package Name of your Connect EMS app')
+    .option('--registry <registry>', 'Connect EMS Package Registry URL', 'https://api.connect-ems.com')
     .action(async (options) => {
         // Build Bundle
-        execSync(`npx rsbuild build && mv dist/index.js dist/main.js && tar -czf bundle.tar.gz dist`); // FIXME: move manifest from definition + images for the store in the bundle as well
-        const bundlePath = path.join(__dirname, 'bundle.tar.gz');
+        const config = await readConnectEmsPackageConfig();
+        execSync(`tar -czf bundle.tar.gz dist`); // FIXME: move manifest from definition + images for the store in the bundle as well
+        const bundlePath = path.join(process.cwd(), 'bundle.tar.gz');
         if (!fs.existsSync(bundlePath)) {
             console.error(`Error: Bundle not found at ${bundlePath}`);
             process.exit(1);
         }
-        await createRelease(bundlePath, options.packageName, options.apiKey);
+        await createRelease(bundlePath, config, options.apiKey, options.registry);
     });
 
 program.parse(process.argv);
 
 
-const createRelease = (bundlePath: string, packageName: string, apiKey: string) => {
-    return new Promise((resolve, reject) => {
-        const postData = JSON.stringify({packageName});
-
-        const options = {
-            hostname: 'api.connect-ems.com',
-            path: '/api/package-registry/create-release',
+const createRelease = async (bundlePath: string, config: ConnectPackageDefinition, apiKey: string, registry: string) => {
+    try {
+        const response = await fetch(`${registry}/api/package-registry/create-release`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Content-Length': Buffer.byteLength(postData),
-                Authorization: `Bearer ${apiKey}`,
+                'Authorization': `Bearer ${apiKey}`,
             },
-        };
-
-        const req = https.request(options, (res) => {
-            let data = '';
-            res.on('data', (chunk) => {
-                data += chunk;
-            });
-            res.on('end', () => {
-                if (res.statusCode === 201) {
-                    const response: { uploadUrl: string, releaseId: string } = JSON.parse(data);
-                    if (response && response.uploadUrl) {
-                        uploadBundle(bundlePath, apiKey, response.uploadUrl, response.releaseId).then(() => resolve({})).catch((error: Error) => reject(error));
-                    } else {
-                        console.error('Error: Could not get upload URL from response.');
-                        reject(new Error('No upload URL in response'));
-                    }
-                } else {
-                    console.error(`Error creating release: ${res.statusCode}`);
-                    console.error(data);
-                    reject(new Error(`Failed to create release: ${res.statusCode}`));
-                }
-            });
+            body: JSON.stringify({...config})
         });
 
-        req.on('error', (e) => {
-            console.error(`Problem with request: ${e.message}`);
-            reject(new Error(`Request error: ${e.message}`));
-        });
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`Error creating release: ${response.status}`);
+            console.error(errorText);
+            throw new Error(`Failed to create release: ${response.status}`);
+        }
 
-        req.write(postData);
-        req.end();
-    });
+        // @ts-expect-error this is fine
+        const data: { uploadUrl: string, releaseId: string } = await response.json();
+
+        if (!data || !data.uploadUrl) {
+            console.error('Error: Could not get upload URL from response.');
+            throw new Error('No upload URL in response');
+        }
+
+        await uploadBundle(bundlePath, apiKey, registry, data.uploadUrl, data.releaseId);
+    } catch (error) {
+        if (error instanceof Error) {
+            console.error(`Problem with request: ${error.message}`);
+            throw new Error(`Request error: ${error.message}`);
+        }
+        throw error;
+    }
 };
 
-const finishRelease = (releaseId: string, apiKey: string) => {
-    return new Promise((resolve, reject) => {
-        const postData = JSON.stringify({releaseId});
-
-        const options = {
-            hostname: 'api.connect-ems.com',
-            path: '/api/internal/package-registry/finish-release',
+const finishRelease = async (releaseId: string, apiKey: string, registry: string) => {
+    try {
+        const response = await fetch(`${registry}/api/package-registry/finish-release`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Content-Length': Buffer.byteLength(postData),
-                Authorization: `Bearer ${apiKey}`,
+                'Authorization': `Bearer ${apiKey}`,
             },
-        };
-
-        const req = https.request(options, (res) => {
-            let data = '';
-            res.on('data', (chunk) => {
-                data += chunk;
-            });
-            res.on('end', () => {
-                if (res.statusCode === 201) {
-                    console.log('Finished release successfully.');
-                    resolve({});
-                } else {
-                    console.error(`Error finishing release: ${res.statusCode}`);
-                    console.error(data);
-                    reject(new Error(`Failed to finish release: ${res.statusCode}`));
-                }
-            });
+            body: JSON.stringify({releaseId})
         });
 
-        req.on('error', (e) => {
-            console.error(`Problem with request: ${e.message}`);
-            reject(new Error(`Problem with request: ${e.message}`));
-        });
-
-        req.write(postData);
-        req.end();
-    });
+        if (response.status === 201) {
+            console.log('Finished release successfully.');
+            return {};
+        } else {
+            const errorText = await response.text();
+            console.error(`Error finishing release: ${response.status}`);
+            console.error(errorText);
+            throw new Error(`Failed to finish release: ${response.status}`);
+        }
+    } catch (error) {
+        if (error instanceof Error) {
+            console.error(`Problem with request: ${error.message}`);
+            throw new Error(`Problem with request: ${error.message}`);
+        }
+        throw error;
+    }
 };
 
-const uploadBundle = (bundlePath: string, apiKey: string, uploadUrl: string, releaseId: string) => {
+const uploadBundle = (bundlePath: string, apiKey: string, registry: string, uploadUrl: string, releaseId: string) => {
     return new Promise((resolve, reject) => {
         const fileStream = fs.createReadStream(bundlePath);
         const stats = fs.statSync(bundlePath);
@@ -279,7 +289,7 @@ const uploadBundle = (bundlePath: string, apiKey: string, uploadUrl: string, rel
                 res.on('end', () => {
                     if (res.statusCode === 200 || res.statusCode === 201) {
                         console.log('Bundle uploaded successfully.');
-                        finishRelease(releaseId, apiKey).then(() => resolve({})).catch((error: Error) => reject(error))
+                        finishRelease(releaseId, apiKey, registry).then(() => resolve({})).catch((error: Error) => reject(error))
                     } else {
                         console.error(`Error uploading bundle: ${res.statusCode}`);
                         console.error(data);

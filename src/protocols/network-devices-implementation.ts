@@ -1,4 +1,8 @@
-import type { ConnectNetworkDevices, NetworkDevice, NetworkPort } from "../../../connect-ems-api/dist/packages/connect-network-devices";
+import type {
+    ConnectNetworkDevices,
+    NetworkDevice,
+    NetworkPort
+} from "../../../connect-ems-api/dist/packages/connect-network-devices";
 
 /**
  * Mock implementation of network device discovery for the CLI environment
@@ -63,30 +67,26 @@ export class NetworkDevicesImplementation implements ConnectNetworkDevices {
         const initialDevices: NetworkDevice[] = [
             {
                 id: 'device-001',
-                name: 'Home Router',
+                hostname: 'Home Router',
                 ipAddress: '192.168.1.1',
                 macAddress: '00:11:22:33:44:55',
-                deviceType: 'router',
-                manufacturer: 'TP-Link',
                 isOnline: true,
                 lastSeen: new Date(Date.now() - 60000), // 1 minute ago
                 ports: [
-                    { port: 80, protocol: 'tcp', isOpen: true, service: 'http' },
-                    { port: 443, protocol: 'tcp', isOpen: true, service: 'https' },
-                    { port: 53, protocol: 'udp', isOpen: true, service: 'dns' }
+                    {port: 80, service: 'http'},
+                    {port: 443, service: 'https'},
+                    {port: 53, service: 'dns'}
                 ]
             },
             {
                 id: 'device-002',
-                name: 'Smart Thermostat',
+                hostname: 'Smart Thermostat',
                 ipAddress: '192.168.1.100',
                 macAddress: '00:AA:BB:CC:DD:EE',
-                deviceType: 'thermostat',
-                manufacturer: 'Nest',
                 isOnline: true,
                 lastSeen: new Date(Date.now() - 30000), // 30 seconds ago
                 ports: [
-                    { port: 80, protocol: 'tcp', isOpen: true, service: 'http' }
+                    {port: 80, service: 'http'}
                 ]
             }
         ];
@@ -111,11 +111,9 @@ export class NetworkDevicesImplementation implements ConnectNetworkDevices {
 
             const device: NetworkDevice = {
                 id: deviceId,
-                name: `${manufacturer} ${deviceType}`,
+                hostname: `${manufacturer} ${deviceType}`,
                 ipAddress: `192.168.1.${lastOctet}`,
                 macAddress: this.generateMacAddress(),
-                deviceType,
-                manufacturer,
                 isOnline: Math.random() > 0.2, // 80% chance online
                 lastSeen: new Date(Date.now() - Math.floor(Math.random() * 300000)), // within last 5 minutes
                 ports: this.generateRandomPorts()
@@ -144,13 +142,13 @@ export class NetworkDevicesImplementation implements ConnectNetworkDevices {
 
     private generateRandomPorts(): NetworkPort[] {
         const commonPorts = [
-            { port: 80, protocol: 'tcp' as const, service: 'http' },
-            { port: 443, protocol: 'tcp' as const, service: 'https' },
-            { port: 22, protocol: 'tcp' as const, service: 'ssh' },
-            { port: 23, protocol: 'tcp' as const, service: 'telnet' },
-            { port: 53, protocol: 'udp' as const, service: 'dns' },
-            { port: 161, protocol: 'udp' as const, service: 'snmp' },
-            { port: 8080, protocol: 'tcp' as const, service: 'http-alt' }
+            {port: 80, service: 'http'},
+            {port: 443, service: 'https'},
+            {port: 22, service: 'ssh'},
+            {port: 23, service: 'telnet'},
+            {port: 53, service: 'dns'},
+            {port: 161, service: 'snmp'},
+            {port: 8080, service: 'http-alt'}
         ];
 
         const numPorts = Math.floor(Math.random() * 4) + 1; // 1-4 ports
@@ -160,7 +158,6 @@ export class NetworkDevicesImplementation implements ConnectNetworkDevices {
             const portInfo = commonPorts[Math.floor(Math.random() * commonPorts.length)];
             const port: NetworkPort = {
                 ...portInfo,
-                isOpen: Math.random() > 0.3 // 70% chance port is open
             };
             selectedPorts.push(port);
         }

@@ -28,6 +28,7 @@ export default ts.config(
       '@typescript-eslint/no-unsafe-member-access': 'off',
       '@typescript-eslint/unbound-method': 'off',
       '@typescript-eslint/no-floating-promises': 'warn',
+      '@typescript-eslint/require-await': 'off',
       '@typescript-eslint/no-unused-vars': [
         'warn',
         {
