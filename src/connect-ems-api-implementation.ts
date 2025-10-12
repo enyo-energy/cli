@@ -1,12 +1,14 @@
-import type {ConnectEmsApi} from "../../connect-ems-api/dist/connect-ems-api";
-import type {ConnectInterval, IntervalDuration} from "../../connect-ems-api/dist/packages/connect-interval";
-import type {ConnectModbus} from "../../connect-ems-api/dist/packages/connect-modbus";
-import type {ConnectNetworkDevices} from "../../connect-ems-api/dist/packages/connect-network-devices";
-import type {Request, Response} from "express";
+import type { ConnectEmsApi } from "../../connect-ems-api/dist/connect-ems-api";
+import type { ConnectInterval, IntervalDuration } from "../../connect-ems-api/dist/packages/connect-interval";
+import type { ConnectModbus } from "../../connect-ems-api/dist/packages/connect-modbus";
+import type { ConnectNetworkDevices } from "../../connect-ems-api/dist/packages/connect-network-devices";
+import type { Request, Response } from "express";
 import express from 'express';
-import {PermissionNotGrantedError} from './errors/permission-not-granted.js';
-import {ModbusImplementation} from './protocols/modbus-implementation.js';
-import {NetworkDevicesImplementation} from './protocols/network-devices-implementation.js';
+import { PermissionNotGrantedError } from './errors/permission-not-granted.js';
+import { ModbusImplementation } from './protocols/modbus-implementation.js';
+import { NetworkDevicesImplementation } from './protocols/network-devices-implementation.js';
+import { MOCK_SERVER_PORT } from './constants/defaults.js';
+import { durationToMs } from './utils/interval-utils.js';
 
 export interface ConnectEmsApiContext {
     packageName: string;
@@ -22,18 +24,20 @@ export class ConnectEmsApiImplementation implements ConnectEmsApi {
     }
 
     register(callback: (packageName: string, version: number) => void) {
-        console.log('MockConnectEmsApi: Registering package with Connect EMS API');
+        console.log('🔌 MockConnectEmsApi: Registering package with Connect EMS API');
         const app = express();
         app.use(express.json());
         app.get('/', (req: Request, res: Response) => {
+            res.json({ status: 'running', package: this.context.packageName });
         });
-        app.listen(4001, () => {
-            callback('com.example', 1);
-        })
+        app.listen(MOCK_SERVER_PORT, () => {
+            console.log(`🌐 Mock server running on port ${MOCK_SERVER_PORT}`);
+            callback(this.context.packageName, this.context.version);
+        });
     }
 
     onShutdown(callback: () => Promise<void>) {
-        console.log('MockConnectEmsApi: onShutdown callback registered');
+        console.log('🔄 MockConnectEmsApi: onShutdown callback registered');
         // In a real implementation, this would handle graceful shutdown
         // For now, we'll just log the registration
     }
@@ -73,26 +77,6 @@ export class ConnectEmsApiImplementation implements ConnectEmsApi {
     useInterval(): ConnectInterval {
         const intervals = new Map<string, NodeJS.Timeout>();
         let nextId = 0;
-
-        const durationToMs = (duration: IntervalDuration): number => {
-            switch (duration) {
-                case '1s':
-                    return 1000;
-                case '10s':
-                    return 10000;
-                case '30s':
-                    return 30000;
-                case '1m':
-                    return 60000;
-                case '5m':
-                    return 300000;
-                case '1hr':
-                    return 3600000;
-                default:
-                    // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
-                    throw new Error(`Unsupported duration: ${duration}`);
-            }
-        };
 
         return {
             createInterval: (duration: IntervalDuration, callback: () => void): string => {

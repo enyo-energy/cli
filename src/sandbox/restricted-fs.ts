@@ -25,7 +25,8 @@ export const createRestrictedFS = (packageRoot: string): RestrictedFileSystem =>
             const resolvedPath = path.resolve(packageRoot, targetPath);
             const normalizedPath = path.normalize(resolvedPath);
 
-            return targetPath.startsWith(normalizedPath)
+            // Check if the resolved path is within the package root
+            return normalizedPath.startsWith(normalizedPackageRoot);
         } catch (error) {
             // If any error occurs in path resolution, deny access
             return false;
