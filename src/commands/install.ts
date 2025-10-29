@@ -2,6 +2,7 @@ import { installDevPackage } from '../dev-package-installer.js';
 import { readHemsOnePackageConfig, ensureFileExists } from '../utils/file-utils.js';
 import { validatePort, CLIError, handleError } from '../utils/error-handler.js';
 import { FILE_NAMES, DEFAULT_DEVICE_HOST, DEFAULT_DEVICE_PORT } from '../constants/defaults.js';
+import { WebSocketLogger } from '../utils/websocket-client.js';
 import type { CommandOptions } from '../types/index.js';
 
 export const installCommand = async (options: CommandOptions): Promise<void> => {
@@ -21,6 +22,22 @@ export const installCommand = async (options: CommandOptions): Promise<void> => 
 
         console.log(`🔧 Installing to device at ${deviceHost}:${devicePort}...`);
         await installDevPackage(deviceHost, devicePort, options.token, config);
+
+        console.log('🔌 Connecting to log stream...');
+        const wsLogger = new WebSocketLogger(
+            deviceHost,
+            devicePort + 1,
+            options.token,
+            config.packageName
+        );
+
+        try {
+            await wsLogger.connect();
+            wsLogger.startListening();
+        } catch (error) {
+            console.error('Failed to connect to log stream:', error);
+            console.log('📦 Package installed successfully, but log streaming is unavailable.');
+        }
 
     } catch (error) {
         if (error instanceof CLIError) {
