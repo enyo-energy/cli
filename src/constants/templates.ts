@@ -23,12 +23,12 @@ export const TS_CONFIG = `{
 }
 `;
 
-export const EXAMPLE_INDEX_FILE = `import {ConnectEmsPackageClient} from "../../connect-ems-api";
+export const EXAMPLE_INDEX_FILE = `import {EnergyApp} from "../../connect-ems-api";
 
-const client = new ConnectEmsPackageClient();
+const client = new EnergyApp();
 
 client.register((packageName: string, version: number) => {
-    // The packageName and version number is provided by the released package in the Connect EMS Marketplace. You can use that information for whatever you want.
+    // The packageName and version number is provided by the released package in the HEMS one Marketplace. You can use that information for whatever you want.
     console.log(\`network state is \${client.isOnline() ? 'online' : 'offline'}. Package \${packageName} version \${version} is registered.\`);
     // This starts you application, do all the things in here!
     client.shutdown(async () => {
@@ -37,9 +37,9 @@ client.register((packageName: string, version: number) => {
     })
 });`;
 
-export const EXAMPLE_PACKAGE_FILE = `import {defineConnectEmsPackage} from "../../connect-ems-api";
+export const EXAMPLE_PACKAGE_FILE = `import {defineEnergyAppPackage} from "../../connect-ems-api";
 
-export default defineConnectEmsPackage({
+export default defineEnergyAppPackage({
     version: '1',
     packageName: 'example-package',
     permissions: [

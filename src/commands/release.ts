@@ -2,11 +2,11 @@ import fs from 'fs';
 import https from 'https';
 import path from 'path';
 import { execSync } from 'child_process';
-import { readConnectEmsPackageConfig } from '../utils/file-utils.js';
+import { readHemsOnePackageConfig } from '../utils/file-utils.js';
 import { CLIError, handleError } from '../utils/error-handler.js';
 import { DEFAULT_REGISTRY_URL, FILE_NAMES } from '../constants/defaults.js';
 import type { CommandOptions, ReleaseResponse } from '../types/index.js';
-import type { ConnectPackageDefinition } from '../../../connect-ems-api';
+import {EnergyAppPackageDefinition} from "../../../connect-ems-api";
 
 export const releaseCommand = async (options: CommandOptions): Promise<void> => {
     try {
@@ -15,7 +15,7 @@ export const releaseCommand = async (options: CommandOptions): Promise<void> => 
         }
 
         console.log('📖 Reading package configuration...');
-        const config = await readConnectEmsPackageConfig();
+        const config = await readHemsOnePackageConfig();
 
         console.log('📦 Building bundle...');
         execSync(`tar -czf ${FILE_NAMES.BUNDLE} dist`, { stdio: 'inherit' });
@@ -40,7 +40,7 @@ export const releaseCommand = async (options: CommandOptions): Promise<void> => 
 
 const createRelease = async (
     bundlePath: string,
-    config: ConnectPackageDefinition,
+    config: EnergyAppPackageDefinition,
     apiKey: string,
     registry: string
 ): Promise<void> => {

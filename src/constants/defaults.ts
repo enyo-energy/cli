@@ -4,7 +4,7 @@ export const DEFAULT_DEVICE_PORT = 6021;
 export const MOCK_SERVER_PORT = 4001;
 
 export const FILE_NAMES = {
-    PACKAGE_CONFIG: 'connect-ems.package.ts',
+    PACKAGE_CONFIG: 'energy-app.package.ts',
     PACKAGE_JSON: 'package.json',
     RSBUILD_CONFIG: 'rsbuild.config.ts',
     TSCONFIG: 'tsconfig.json',

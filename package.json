@@ -1,10 +1,10 @@
 {
-  "name": "connect-ems-cli",
+  "name": "@hems-one/cli",
   "version": "1.0.0",
-  "description": "The Connect EMS CLI is a npm-based cli to publish and deploy your Connect EMS Packages to our store.",
+  "description": "The HEMS one CLI is a npm-based cli to publish and deploy your HEMS one Energy Apps to our store.",
   "main": "index.js",
   "bin": {
-    "connect-ems": "dist/index.js"
+    "hems-one": "dist/index.js"
   },
   "scripts": {
     "build": "duel"

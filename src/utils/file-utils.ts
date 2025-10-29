@@ -1,11 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import {createJiti} from 'jiti';
-import type {ConnectPackageDefinition} from "../../../connect-ems-api";
 import {FILE_NAMES} from '../constants/defaults.js';
 import {CLIError} from './error-handler.js';
+import {EnergyAppPackageDefinition} from "../../../connect-ems-api";
 
-export const readConnectEmsPackageConfig = async (filePath = FILE_NAMES.PACKAGE_CONFIG): Promise<ConnectPackageDefinition> => {
+export const readHemsOnePackageConfig = async (filePath = FILE_NAMES.PACKAGE_CONFIG): Promise<EnergyAppPackageDefinition> => {
     try {
         if (!fs.existsSync(filePath)) {
             throw new CLIError(`${FILE_NAMES.PACKAGE_CONFIG} file not found at ${filePath}`);
@@ -19,7 +19,7 @@ export const readConnectEmsPackageConfig = async (filePath = FILE_NAMES.PACKAGE_
             }
         });
 
-        return (await jiti(path.resolve(filePath))).default as ConnectPackageDefinition;
+        return (await jiti(path.resolve(filePath))).default as EnergyAppPackageDefinition;
     } catch (error) {
         if (error instanceof CLIError) {
             throw error;

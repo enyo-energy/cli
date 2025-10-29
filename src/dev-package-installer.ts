@@ -1,17 +1,17 @@
 import fs from 'fs';
 import path from 'path';
-import { execSync } from 'child_process';
-import type { ConnectPackageDefinition } from "../../connect-ems-api";
-import type { DevPackageInstallRequest, DevPackageInstallResponse } from './types/index.js';
-import { FILE_NAMES } from './constants/defaults.js';
-import { CLIError } from './utils/error-handler.js';
-import { Agent } from 'undici'
+import {execSync} from 'child_process';
+import type {EnergyAppPackageDefinition} from "../../connect-ems-api";
+import type {DevPackageInstallRequest, DevPackageInstallResponse} from './types/index.js';
+import {FILE_NAMES} from './constants/defaults.js';
+import {CLIError} from './utils/error-handler.js';
+import {Agent} from 'undici'
 
 export const installDevPackage = async (
     deviceHost: string,
     devicePort: number,
     debugToken: string,
-    config: ConnectPackageDefinition
+    config: EnergyAppPackageDefinition
 ): Promise<void> => {
     const currentDir = process.cwd();
     const distPath = path.join(currentDir, 'dist');
@@ -23,16 +23,8 @@ export const installDevPackage = async (
         throw new CLIError('dist directory not found. Please build the package first using "npx rsbuild build"');
     }
 
-    // Check if dist/index.js exists and rename to main.js if needed
-    const indexPath = path.join(distPath, 'index.js');
-    const mainPath = path.join(distPath, 'main.js');
-
-    if (!fs.existsSync(mainPath) && fs.existsSync(indexPath)) {
-        execSync(`mv "${indexPath}" "${mainPath}"`, { stdio: 'inherit' });
-    }
-
     // Create bundle
-    execSync(`tar -czf ${FILE_NAMES.BUNDLE} -C ${currentDir} dist`, { stdio: 'inherit' });
+    execSync(`tar -czf ${FILE_NAMES.BUNDLE} -C ${currentDir} dist`, {stdio: 'inherit'});
 
     if (!fs.existsSync(bundlePath)) {
         throw new CLIError(`Bundle not found at ${bundlePath}`);
@@ -47,7 +39,9 @@ export const installDevPackage = async (
         packageName: config.packageName,
         packageVersion: parseInt(config.version, 10),
         packageBundle: bundleBase64,
-        debugToken: debugToken
+        debugToken: debugToken,
+        permissions: config.permissions,
+        options: config.options
     };
 
     console.log(`🚀 Installing package to device at ${deviceHost}:${devicePort}...`);
@@ -58,28 +52,39 @@ export const installDevPackage = async (
         }
     })
 
-    const response = await fetch(`https://${deviceHost}:${devicePort}/dev-package/install`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-        dispatcher: httpsAgent
-    });
+    try {
 
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new CLIError(`Failed to install package: ${response.status} ${response.statusText}\n${errorText}`);
+        const response = await fetch(`https://${deviceHost}:${devicePort}/dev-package/install`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+            dispatcher: httpsAgent
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`Failed to install package: ${response.status} ${response.statusText}\n${errorText}`)
+            throw new CLIError(`Failed to install package: ${response.status} ${response.statusText}\n${errorText}`);
+        }
+
+        const result = await response.json() as DevPackageInstallResponse;
+
+        console.log('✅ Package installation successful!');
+        console.log(`📦 Package: ${result.packageName} (${result.packageId})`);
+        console.log(`🔢 Version: ${result.packageVersion}`);
+        console.log(`💬 Message: ${result.message}`);
+
+        // Clean up bundle file
+        fs.unlinkSync(bundlePath);
+        console.log('🧹 Cleaned up temporary bundle file');
+    } catch (error) {
+        console.error(`Failed to install package: ${error}`, error)
+        if (error instanceof CLIError) {
+            throw error;
+        }
     }
 
-    const result = await response.json() as DevPackageInstallResponse;
 
-    console.log('✅ Package installation successful!');
-    console.log(`📦 Package: ${result.packageName} (${result.packageId})`);
-    console.log(`🔢 Version: ${result.packageVersion}`);
-    console.log(`💬 Message: ${result.message}`);
-
-    // Clean up bundle file
-    fs.unlinkSync(bundlePath);
-    console.log('🧹 Cleaned up temporary bundle file');
 };

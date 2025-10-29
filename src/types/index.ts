@@ -4,6 +4,8 @@ export interface DevPackageInstallRequest {
     packageVersion: number;
     packageBundle: string;
     debugToken: string;
+    permissions: string[];
+    options?: any;
 }
 
 export interface DevPackageInstallResponse {

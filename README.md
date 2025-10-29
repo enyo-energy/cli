@@ -1,17 +1,17 @@
-# Connect EMS CLI
-The Connect EMS CLI is a npm-based cli to publish and deploy your Connect EMS Packages to our store.
+# HEMS one CLI
+The HEMS one CLI is a npm-based cli to publish and deploy your HEMS one Energy Apps to our store.
 
 ## Authorization
-You need a Developer Org to use the Connect EMS CLI. Reach out to info@connect-ems.com to get your Developer Org.
+You need a Developer Org to use the HEMS one CLI. Reach out to info@hems-one.com to get your Developer Org.
 If you own a verified Developer Org, you can create a new API key and use this one by providing the `--api-key <API KEY>` argument to your call.
 
 ## Installation
-To install the Connect EMS CLI, run:
+To install the HEMS one CLI, run:
 ```bash
-npm install -g @connect-ems/cli
+npm install -g @hems-one/cli
 ```
 
-To install the Connect EMS CLI locally in your project, run:
+To install the HEMS one CLI locally in your project, run:
 ```bash
 npm run build
 npm link
@@ -20,7 +20,7 @@ npm link
 ## Usage
 To see all available commands, run:
 ```bash
-connect-ems --help
+hems-one --help
 ```
 
 
