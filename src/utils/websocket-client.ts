@@ -43,6 +43,10 @@ export class WebSocketLogger {
 
             this.ws.on('open', () => {
                 console.log('✅ WebSocket connected');
+
+                // Send subscribe-logs message after connection
+                this.ws?.send(JSON.stringify({ type: 'subscribe-logs' }));
+
                 resolve();
             });
 

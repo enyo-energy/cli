@@ -3,6 +3,8 @@ import { program } from 'commander';
 import { initCommand } from './commands/init.js';
 import { installCommand } from './commands/install.js';
 import { releaseCommand } from './commands/release.js';
+import { mockDeviceCommand, type MockDeviceOptions } from './commands/mock-device.js';
+import { launchSimulationCommand, type LaunchSimulationOptions } from './commands/launch-simulation.js';
 import { handleError, CLIError } from './utils/error-handler.js';
 import type { CommandOptions } from './types/index.js';
 
@@ -52,6 +54,41 @@ program.command('release')
                 process.exit(error.exitCode);
             }
             handleError(error, 'creating release');
+        }
+    });
+
+program.command('mock-device')
+    .description('Create a mock network device for testing')
+    .requiredOption('--ports <ports>', 'Comma-separated list of port numbers (e.g., "80,443,8080")')
+    .requiredOption('--token <token>', 'Debug token from the Connect EMS device')
+    .option('--ip-address <ipAddress>', 'IP address for the mock device')
+    .option('--host <host>', 'Device IP address or hostname', 'localhost')
+    .option('--port <port>', 'Device port number', '6021')
+    .action(async (options: MockDeviceOptions) => {
+        try {
+            await mockDeviceCommand(options);
+        } catch (error) {
+            if (error instanceof CLIError) {
+                console.error(`❌ ${error.message}`);
+                process.exit(error.exitCode);
+            }
+            handleError(error, 'creating mock device');
+        }
+    });
+
+program.command('launch-simulation')
+    .description('Launch a simulation of a device type')
+    .argument('<type>', 'Simulation type (e.g., inverter)')
+    .option('--port <port>', 'Port number for the simulation', '502')
+    .action(async (type: string, options: LaunchSimulationOptions) => {
+        try {
+            await launchSimulationCommand(type, options);
+        } catch (error) {
+            if (error instanceof CLIError) {
+                console.error(`❌ ${error.message}`);
+                process.exit(error.exitCode);
+            }
+            handleError(error, 'launching simulation');
         }
     });
 
