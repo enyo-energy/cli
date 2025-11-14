@@ -54,8 +54,8 @@ modbusServer.holding.writeUInt16BE(10 * 10, getBufferOffset(40072)); // 10.0 A
 // AC Voltage (V) - Register 40078 - L-N voltage
 modbusServer.holding.writeUInt16BE(230 * 10, getBufferOffset(40078)); // 230.0 V
 
-// AC Power (W) - Register 40084
-modbusServer.holding.writeUInt16BE(3000, getBufferOffset(40084)); // 3000 W
+// AC Power (W) - Register 40200
+modbusServer.holding.writeUInt16BE(3000, getBufferOffset(40200)); // 3000 W
 
 // Total Energy (Wh) - Register 40094
 modbusServer.holding.writeUInt32BE(1234567, getBufferOffset(40094)); // 1234.567 kWh (if scale factor is -3)
