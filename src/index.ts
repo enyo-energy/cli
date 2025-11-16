@@ -6,7 +6,7 @@ import { releaseCommand } from './commands/release.js';
 import { mockDeviceCommand, type MockDeviceOptions } from './commands/mock-device.js';
 import { launchSimulationCommand, type LaunchSimulationOptions } from './commands/launch-simulation.js';
 import { handleError, CLIError } from './utils/error-handler.js';
-import type { CommandOptions } from './types/index.js';
+import type { CommandOptions } from './types';
 
 program.version('0.0.1', '-v, --version', 'output the current version');
 

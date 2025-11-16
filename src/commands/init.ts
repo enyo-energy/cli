@@ -1,5 +1,4 @@
 import { execSync } from 'child_process';
-import fs from 'fs';
 import { RS_BUILD_CONFIG, TS_CONFIG, EXAMPLE_INDEX_FILE, EXAMPLE_PACKAGE_FILE } from '../constants/templates.js';
 import { FILE_NAMES, PACKAGE_DEPENDENCIES } from '../constants/defaults.js';
 import { CLIError, handleError } from '../utils/error-handler.js';

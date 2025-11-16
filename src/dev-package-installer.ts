@@ -1,11 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import {execSync} from 'child_process';
-import type {EnergyAppPackageDefinition} from "../../connect-ems-api";
 import type {DevPackageInstallRequest, DevPackageInstallResponse} from './types/index.js';
 import {FILE_NAMES} from './constants/defaults.js';
 import {CLIError} from './utils/error-handler.js';
 import {Agent} from 'undici'
+import {EnergyAppPackageDefinition} from "@hems-one/energy-app-sdk";
 
 export const installDevPackage = async (
     deviceHost: string,

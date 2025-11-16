@@ -5,8 +5,8 @@ import { execSync } from 'child_process';
 import { readHemsOnePackageConfig } from '../utils/file-utils.js';
 import { CLIError, handleError } from '../utils/error-handler.js';
 import { DEFAULT_REGISTRY_URL, FILE_NAMES } from '../constants/defaults.js';
-import type { CommandOptions, ReleaseResponse } from '../types/index.js';
-import {EnergyAppPackageDefinition} from "../../../connect-ems-api";
+import type { CommandOptions, ReleaseResponse } from '../types';
+import {EnergyAppPackageDefinition} from "@hems-one/energy-app-sdk";
 
 export const releaseCommand = async (options: CommandOptions): Promise<void> => {
     try {

@@ -3,7 +3,7 @@ import { readHemsOnePackageConfig, ensureFileExists } from '../utils/file-utils.
 import { validatePort, CLIError, handleError } from '../utils/error-handler.js';
 import { FILE_NAMES, DEFAULT_DEVICE_HOST, DEFAULT_DEVICE_PORT } from '../constants/defaults.js';
 import { WebSocketLogger } from '../utils/websocket-client.js';
-import type { CommandOptions } from '../types/index.js';
+import type { CommandOptions } from '../types';
 
 export const installCommand = async (options: CommandOptions): Promise<void> => {
     try {

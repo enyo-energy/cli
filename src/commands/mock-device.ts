@@ -1,5 +1,5 @@
 import WebSocket from 'ws';
-import type {CommandOptions} from '../types/index.js';
+import type {CommandOptions} from '../types';
 import {readHemsOnePackageConfig} from "../utils/file-utils.js";
 import {DEFAULT_DEVICE_PORT, FILE_NAMES} from "../constants/defaults.js";
 import {validatePort} from "../utils/error-handler.js";

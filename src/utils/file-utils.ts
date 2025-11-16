@@ -3,7 +3,7 @@ import path from 'path';
 import {createJiti} from 'jiti';
 import {FILE_NAMES} from '../constants/defaults.js';
 import {CLIError} from './error-handler.js';
-import {EnergyAppPackageDefinition} from "../../../connect-ems-api";
+import {EnergyAppPackageDefinition} from "@hems-one/energy-app-sdk";
 
 export const readHemsOnePackageConfig = async (filePath = FILE_NAMES.PACKAGE_CONFIG): Promise<EnergyAppPackageDefinition> => {
     try {
