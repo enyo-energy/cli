@@ -1,8 +1,27 @@
+export interface BatteryConfig {
+    capacityWh: number;
+    maxChargeRateW: number;
+    maxDischargeRateW: number;
+    initialChargePercent?: number;
+    nominalVoltage?: number;
+}
+
 export interface InverterSimulationConfig {
     maxPowerW: number;
     nominalVoltage: number;
     timeZoneOffset?: number;
     variabilityFactor?: number;
+    battery?: BatteryConfig;
+}
+
+export interface BatteryValues {
+    currentA: number;
+    chargeStatePercent: number;
+    capacityPercent: number;
+    temperatureC: number;
+    voltageV: number;
+    chargingMethod: number;
+    operatingStatus: number;
 }
 
 export interface SimulatedInverterValues {
@@ -17,12 +36,14 @@ export interface SimulatedInverterValues {
     gridVoltageL1V: number;
     gridVoltageL2V: number;
     gridVoltageL3V: number;
+    battery?: BatteryValues;
 }
 
 export class InverterSimulator {
-    private config: Required<InverterSimulationConfig>;
+    private config: InverterSimulationConfig;
     private dailyEnergyWh: number = 0;
     private lastUpdateTime: Date;
+    private batteryChargeWh: number = 0;
 
     constructor(config: InverterSimulationConfig) {
         this.config = {
@@ -31,6 +52,12 @@ export class InverterSimulator {
             ...config
         };
         this.lastUpdateTime = new Date();
+
+        // Initialize battery charge if battery is configured
+        if (this.config.battery) {
+            const initialPercent = this.config.battery.initialChargePercent ?? 50;
+            this.batteryChargeWh = (this.config.battery.capacityWh * initialPercent) / 100;
+        }
     }
 
     private getSolarIrradiance(hour: number, minute: number): number {
@@ -53,7 +80,7 @@ export class InverterSimulator {
         const baseIrradiance = Math.sin(normalizedTime);
 
         // Add some variability to simulate clouds
-        const variability = 1 + (Math.random() - 0.5) * this.config.variabilityFactor;
+        const variability = 1 + (Math.random() - 0.5) * (this.config.variabilityFactor || 0.15);
 
         return Math.max(0, baseIrradiance * variability);
     }
@@ -63,9 +90,65 @@ export class InverterSimulator {
         return baseValue * variation;
     }
 
+    private simulateBattery(pvPowerW: number, consumptionW: number, timeDiffHours: number): BatteryValues | undefined {
+        if (!this.config.battery) {
+            return undefined;
+        }
+
+        const battery = this.config.battery;
+        const netPowerW = pvPowerW - consumptionW; // Positive = excess, negative = deficit
+
+        // Calculate battery power (charge/discharge)
+        let batteryPowerW = 0;
+
+        if (netPowerW > 0) {
+            // Excess power - charge battery
+            const maxChargeW = Math.min(battery.maxChargeRateW, netPowerW);
+            const remainingCapacityWh = battery.capacityWh - this.batteryChargeWh;
+            const maxChargeThisPeriod = remainingCapacityWh / timeDiffHours;
+            batteryPowerW = Math.min(maxChargeW, maxChargeThisPeriod);
+        } else if (netPowerW < 0) {
+            // Power deficit - discharge battery
+            const maxDischargeW = Math.min(battery.maxDischargeRateW, Math.abs(netPowerW));
+            const maxDischargeThisPeriod = this.batteryChargeWh / timeDiffHours;
+            batteryPowerW = -Math.min(maxDischargeW, maxDischargeThisPeriod);
+        }
+
+        // Update battery charge
+        this.batteryChargeWh = Math.max(0, Math.min(battery.capacityWh,
+            this.batteryChargeWh + (batteryPowerW * timeDiffHours)));
+
+        // Calculate battery values
+        const chargeStatePercent = Math.round((this.batteryChargeWh / battery.capacityWh) * 100);
+        const capacityPercent = 100; // Assume battery is in good condition
+        const voltageV = battery.nominalVoltage ?? 48.0; // Default to 48V battery system
+        const currentA = Math.round((batteryPowerW / voltageV) * 1000) / 1000; // Round to 3 decimal places
+        const temperatureC = Math.round(this.addRandomVariation(25, 0.1)); // Simulate around 25°C
+
+        // Determine charging method and operating status
+        let chargingMethod = 802; // "Not active" from SMA documentation
+        let operatingStatus = 2291; // "Ok" from SMA documentation
+
+        if (batteryPowerW > 0) {
+            chargingMethod = 2501; // "PV charging" from documentation
+        } else if (batteryPowerW < 0) {
+            operatingStatus = 2292; // "Discharging"
+        }
+
+        return {
+            currentA,
+            chargeStatePercent,
+            capacityPercent,
+            temperatureC,
+            voltageV: Math.round(voltageV * 100) / 100,
+            chargingMethod,
+            operatingStatus
+        };
+    }
+
     generateValues(timestamp?: Date): SimulatedInverterValues {
         const now = timestamp || new Date();
-        const adjustedTime = new Date(now.getTime() + this.config.timeZoneOffset * 60 * 60 * 1000);
+        const adjustedTime = new Date(now.getTime() + (this.config.timeZoneOffset || 0) * 60 * 60 * 1000);
         const hour = adjustedTime.getHours();
         const minute = adjustedTime.getMinutes();
 
@@ -113,6 +196,10 @@ export class InverterSimulator {
         this.dailyEnergyWh += energyIncrement;
         this.lastUpdateTime = now;
 
+        // Simulate battery if configured
+        const consumption = Math.round(totalAcPowerW * 0.4); // Simulate 40% self-consumption
+        const battery = this.simulateBattery(pvPowerW, consumption, timeDiffHours);
+
         return {
             pvPowerW,
             acPowerL1W,
@@ -124,7 +211,8 @@ export class InverterSimulator {
             dailyEnergyWh: Math.round(this.dailyEnergyWh),
             gridVoltageL1V,
             gridVoltageL2V,
-            gridVoltageL3V
+            gridVoltageL3V,
+            battery
         };
     }
 
