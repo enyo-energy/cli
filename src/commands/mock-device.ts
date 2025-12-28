@@ -41,7 +41,7 @@ export async function mockDeviceCommand(options: MockDeviceOptions): Promise<voi
     const websocketPort = validatePort(port || DEFAULT_DEVICE_PORT.toString(), 'device port');
 
     return new Promise((resolve, reject) => {
-        const wsUrl = `wss://${host}:${websocketPort + 1}`;
+        const wsUrl = `wss://${host}:${websocketPort}/cli`;
         console.log(`🔌 Connecting to WebSocket at ${wsUrl}...`);
 
         const ws = new WebSocket(wsUrl, {

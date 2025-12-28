@@ -7,6 +7,7 @@ import { mockDeviceCommand, type MockDeviceOptions } from './commands/mock-devic
 import { launchSimulationCommand, type LaunchSimulationOptions } from './commands/launch-simulation.js';
 import { handleError, CLIError } from './utils/error-handler.js';
 import type { CommandOptions } from './types';
+import {DEFAULT_DEVICE_PORT} from "./constants/defaults.js";
 
 program.version('0.0.1', '-v, --version', 'output the current version');
 
@@ -27,7 +28,7 @@ program.command('init')
 program.command('install')
     .description('Build and install the package on a local Connect EMS device for development')
     .option('--host <host>', 'Device IP address or hostname', 'localhost')
-    .option('--port <port>', 'Device port number', '6021')
+    .option('--port <port>', 'Device port number', `${DEFAULT_DEVICE_PORT}`)
     .requiredOption('--token <token>', 'Debug token from the Connect EMS device')
     .action(async (options: CommandOptions) => {
         try {
@@ -44,7 +45,7 @@ program.command('install')
 program.command('release')
     .description('Create a new release for your Connect EMS app and upload to the connect EMS store.')
     .requiredOption('--api-key <apiKey>', 'Your Developer Org API Key')
-    .option('--registry <registry>', 'Connect EMS Package Registry URL', 'https://api.connect-ems.com')
+    .option('--registry <registry>', 'Connect EMS Package Registry URL', 'https://api.hems1.de')
     .action(async (options: CommandOptions) => {
         try {
             await releaseCommand(options);
@@ -63,7 +64,7 @@ program.command('mock-device')
     .requiredOption('--token <token>', 'Debug token from the Connect EMS device')
     .option('--ip-address <ipAddress>', 'IP address for the mock device')
     .option('--host <host>', 'Device IP address or hostname', 'localhost')
-    .option('--port <port>', 'Device port number', '6021')
+    .option('--port <port>', 'Device port number', `${DEFAULT_DEVICE_PORT}`)
     .action(async (options: MockDeviceOptions) => {
         try {
             await mockDeviceCommand(options);

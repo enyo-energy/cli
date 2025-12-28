@@ -26,7 +26,7 @@ export const installCommand = async (options: CommandOptions): Promise<void> => 
         console.log('🔌 Connecting to log stream...');
         const wsLogger = new WebSocketLogger(
             deviceHost,
-            devicePort + 1,
+            devicePort,
             options.token,
             config.packageName
         );

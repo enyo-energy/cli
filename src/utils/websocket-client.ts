@@ -30,7 +30,7 @@ export class WebSocketLogger {
 
     connect(): Promise<void> {
         return new Promise((resolve, reject) => {
-            const wsUrl = `wss://${this.host}:${this.port}`;
+            const wsUrl = `wss://${this.host}:${this.port}/cli`;
             console.log(`🔌 Connecting to WebSocket at ${wsUrl}...`);
 
             this.ws = new WebSocket(wsUrl, {
