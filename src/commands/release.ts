@@ -45,15 +45,13 @@ const createRelease = async (
     registry: string
 ): Promise<void> => {
     // Read SDK version from package.json
-    const packageJson = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf-8'));
-    const sdkVersion = packageJson.dependencies?.['@hems-one/energy-app-sdk'] || 'unknown';
     const response = await fetch(`${registry}/api/package-registry/create-release`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${apiKey}`,
         },
-        body: JSON.stringify({ ...config, sdkVersion })
+        body: JSON.stringify({ ...config })
     });
 
     if (!response.ok) {

@@ -45,7 +45,7 @@ program.command('install')
 program.command('release')
     .description('Create a new release for your Connect EMS app and upload to the connect EMS store.')
     .requiredOption('--api-key <apiKey>', 'Your Developer Org API Key')
-    .option('--registry <registry>', 'Connect EMS Package Registry URL', 'https://api.enyo.de')
+    .option('--registry <registry>', 'Connect EMS Package Registry URL', 'https://api.hems1.de')
     .action(async (options: CommandOptions) => {
         try {
             await releaseCommand(options);
