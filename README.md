@@ -1,17 +1,17 @@
-# HEMS one CLI
-The HEMS one CLI is a npm-based cli to publish and deploy your HEMS one Energy Apps to our store.
+# Enyo CLI
+The Enyo CLI is a npm-based cli to publish and deploy your Enyo Energy Apps to our store.
 
 ## Authorization
-You need a Developer Org to use the HEMS one CLI. Reach out to info@hems-one.com to get your Developer Org.
+You need a Developer Org to use the Enyo CLI. Reach out to info@enyo.de to get your Developer Org.
 If you own a verified Developer Org, you can create a new API key and use this one by providing the `--api-key <API KEY>` argument to your call.
 
 ## Installation
-To install the HEMS one CLI, run:
+To install the Enyo CLI, run:
 ```bash
-npm install -g @hems-one/cli
+npm install -g @enyo/cli
 ```
 
-To install the HEMS one CLI locally in your project, run:
+To install the Enyo CLI locally in your project, run:
 ```bash
 npm run build
 npm link
@@ -20,7 +20,7 @@ npm link
 ## Usage
 To see all available commands, run:
 ```bash
-hems-one --help
+enyo --help
 ```
 
 

@@ -1,4 +1,4 @@
-export const DEFAULT_REGISTRY_URL = 'https://api.connect-ems.com';
+export const DEFAULT_REGISTRY_URL = 'https://api.enyo.de';
 export const DEFAULT_DEVICE_HOST = 'localhost';
 export const DEFAULT_DEVICE_PORT = 6022;
 

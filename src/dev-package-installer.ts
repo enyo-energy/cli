@@ -41,7 +41,8 @@ export const installDevPackage = async (
         packageBundle: bundleBase64,
         debugToken: debugToken,
         permissions: config.permissions,
-        options: config.options
+        options: config.options,
+        sdkVersion: config.sdkVersion
     };
 
     console.log(`🚀 Installing package to device at ${deviceHost}:${devicePort}...`);

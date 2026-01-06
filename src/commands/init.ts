@@ -18,7 +18,7 @@ export const initCommand = (): void => {
         console.log('📦 Installing dependencies...');
         execSync(`npm install -D ${PACKAGE_DEPENDENCIES}`, { stdio: 'inherit' });
 
-        console.log('✅ HEMS one package initialized successfully!');
+        console.log('✅ enyo package initialized successfully!');
         console.log('📝 Files created:');
         console.log(`  - ${FILE_NAMES.RSBUILD_CONFIG}`);
         console.log(`  - ${FILE_NAMES.TSCONFIG}`);

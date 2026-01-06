@@ -1,6 +1,6 @@
 import WebSocket from 'ws';
 import type {CommandOptions} from '../types';
-import {readHemsOnePackageConfig} from "../utils/file-utils.js";
+import {readEnyoPackageConfig} from "../utils/file-utils.js";
 import {DEFAULT_DEVICE_PORT, FILE_NAMES} from "../constants/defaults.js";
 import {validatePort} from "../utils/error-handler.js";
 
@@ -26,7 +26,7 @@ export interface MockDeviceOptions extends CommandOptions {
 
 export async function mockDeviceCommand(options: MockDeviceOptions): Promise<void> {
     const {ports, ipAddress, host, port, token} = options;
-    const config = await readHemsOnePackageConfig(FILE_NAMES.PACKAGE_CONFIG);
+    const config = await readEnyoPackageConfig(FILE_NAMES.PACKAGE_CONFIG);
 
     const parsedPorts = ports.split(',').map(port => {
         const num = parseInt(port.trim(), 10);

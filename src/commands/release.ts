@@ -2,7 +2,7 @@ import fs from 'fs';
 import https from 'https';
 import path from 'path';
 import { execSync } from 'child_process';
-import { readHemsOnePackageConfig } from '../utils/file-utils.js';
+import { readEnyoPackageConfig } from '../utils/file-utils.js';
 import { CLIError, handleError } from '../utils/error-handler.js';
 import { DEFAULT_REGISTRY_URL, FILE_NAMES } from '../constants/defaults.js';
 import type { CommandOptions, ReleaseResponse } from '../types';
@@ -15,7 +15,7 @@ export const releaseCommand = async (options: CommandOptions): Promise<void> => 
         }
 
         console.log('📖 Reading package configuration...');
-        const config = await readHemsOnePackageConfig();
+        const config = await readEnyoPackageConfig();
 
         console.log('📦 Building bundle...');
         execSync(`tar -czf ${FILE_NAMES.BUNDLE} dist`, { stdio: 'inherit' });
@@ -44,13 +44,16 @@ const createRelease = async (
     apiKey: string,
     registry: string
 ): Promise<void> => {
+    // Read SDK version from package.json
+    const packageJson = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf-8'));
+    const sdkVersion = packageJson.dependencies?.['@hems-one/energy-app-sdk'] || 'unknown';
     const response = await fetch(`${registry}/api/package-registry/create-release`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${apiKey}`,
         },
-        body: JSON.stringify({ ...config })
+        body: JSON.stringify({ ...config, sdkVersion })
     });
 
     if (!response.ok) {

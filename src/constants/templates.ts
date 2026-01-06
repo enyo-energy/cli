@@ -28,7 +28,7 @@ export const EXAMPLE_INDEX_FILE = `import {EnergyApp} from "../../connect-ems-ap
 const client = new EnergyApp();
 
 client.register((packageName: string, version: number) => {
-    // The packageName and version number is provided by the released package in the HEMS one Marketplace. You can use that information for whatever you want.
+    // The packageName and version number is provided by the released package in the enyo Marketplace. You can use that information for whatever you want.
     console.log(\`network state is \${client.isOnline() ? 'online' : 'offline'}. Package \${packageName} version \${version} is registered.\`);
     // This starts you application, do all the things in here!
     client.shutdown(async () => {

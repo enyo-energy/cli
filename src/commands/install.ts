@@ -1,5 +1,5 @@
 import { installDevPackage } from '../dev-package-installer.js';
-import { readHemsOnePackageConfig, ensureFileExists } from '../utils/file-utils.js';
+import { readEnyoPackageConfig, ensureFileExists } from '../utils/file-utils.js';
 import { validatePort, CLIError, handleError } from '../utils/error-handler.js';
 import { FILE_NAMES, DEFAULT_DEVICE_HOST, DEFAULT_DEVICE_PORT } from '../constants/defaults.js';
 import { WebSocketLogger } from '../utils/websocket-client.js';
@@ -14,7 +14,7 @@ export const installCommand = async (options: CommandOptions): Promise<void> => 
         }
 
         console.log('📖 Reading package configuration...');
-        const config = await readHemsOnePackageConfig(FILE_NAMES.PACKAGE_CONFIG);
+        const config = await readEnyoPackageConfig(FILE_NAMES.PACKAGE_CONFIG);
         console.log(`📦 Loaded package: ${config.packageName} v${config.version}`);
 
         const deviceHost = options.host || DEFAULT_DEVICE_HOST;

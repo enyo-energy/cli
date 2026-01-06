@@ -5,7 +5,7 @@ import {FILE_NAMES} from '../constants/defaults.js';
 import {CLIError} from './error-handler.js';
 import {EnergyAppPackageDefinition} from "@hems-one/energy-app-sdk";
 
-export const readHemsOnePackageConfig = async (filePath = FILE_NAMES.PACKAGE_CONFIG): Promise<EnergyAppPackageDefinition> => {
+export const readEnyoPackageConfig = async (filePath = FILE_NAMES.PACKAGE_CONFIG): Promise<EnergyAppPackageDefinition> => {
     try {
         if (!fs.existsSync(filePath)) {
             throw new CLIError(`${FILE_NAMES.PACKAGE_CONFIG} file not found at ${filePath}`);
