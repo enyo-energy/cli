@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-import { program } from 'commander';
-import { initCommand } from './commands/init.js';
-import { installCommand } from './commands/install.js';
-import { releaseCommand } from './commands/release.js';
-import { mockDeviceCommand, type MockDeviceOptions } from './commands/mock-device.js';
-import { launchSimulationCommand, type LaunchSimulationOptions } from './commands/launch-simulation.js';
-import { handleError, CLIError } from './utils/error-handler.js';
-import type { CommandOptions } from './types';
+import {program} from 'commander';
+import {initCommand} from './commands/init.js';
+import {installCommand} from './commands/install.js';
+import {releaseCommand} from './commands/release.js';
+import {mockDeviceCommand, type MockDeviceOptions} from './commands/mock-device.js';
+import {launchSimulationCommand, type LaunchSimulationOptions} from './commands/launch-simulation.js';
+import {handleError, CLIError} from './utils/error-handler.js';
+import type {CommandOptions} from './types';
 import {DEFAULT_DEVICE_PORT} from "./constants/defaults.js";
 
 program.version('0.0.1', '-v, --version', 'output the current version');
@@ -43,9 +43,10 @@ program.command('install')
     });
 
 program.command('release')
-    .description('Create a new release for your Connect EMS app and upload to the connect EMS store.')
+    .description('Create a new release for your Energy app and upload to the enyo store.')
     .requiredOption('--api-key <apiKey>', 'Your Developer Org API Key')
-    .option('--registry <registry>', 'Connect EMS Package Registry URL', 'https://api.hems1.de')
+    .option('--registry <registry>', 'enyo Package Registry URL', 'https://api.hems1.de')
+    .option('-f, --file <file>', 'Specific config file to release (if not set, searches for all *.package.ts files)')
     .action(async (options: CommandOptions) => {
         try {
             await releaseCommand(options);

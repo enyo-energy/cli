@@ -21,8 +21,8 @@
   },
   "homepage": "https://github.com/kevin-kirch/connect-ems-cli#readme",
   "dependencies": {
-    "@enyo/energy-app-sdk": "^0.0.15",
-    "@enyo/simulated-devices": "^1.0.0",
+    "@hems-one/energy-app-sdk": "^0.0.17",
+    "@hems-one/simulated-devices": "^1.0.0",
     "@types/ws": "^8.18.1",
     "commander": "^14.0.0",
     "express": "^5.1.0",

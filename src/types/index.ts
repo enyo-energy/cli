@@ -19,6 +19,7 @@ export interface DevPackageInstallResponse {
 export interface ReleaseResponse {
     uploadUrl: string;
     releaseId: string;
+    logoUploadUrl?: string;
 }
 
 export interface CommandOptions {
@@ -27,4 +28,5 @@ export interface CommandOptions {
     token?: string;
     apiKey?: string;
     registry?: string;
+    file?: string;
 }
