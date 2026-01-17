@@ -5,6 +5,7 @@ import {installCommand} from './commands/install.js';
 import {releaseCommand} from './commands/release.js';
 import {mockDeviceCommand, type MockDeviceOptions} from './commands/mock-device.js';
 import {launchSimulationCommand, type LaunchSimulationOptions} from './commands/launch-simulation.js';
+import {cliCommand, type CliCommandOptions} from './commands/cli.js';
 import {handleError, CLIError} from './utils/error-handler.js';
 import type {CommandOptions} from './types';
 import {DEFAULT_DEVICE_PORT} from "./constants/defaults.js";
@@ -91,6 +92,24 @@ program.command('launch-simulation')
                 process.exit(error.exitCode);
             }
             handleError(error, 'launching simulation');
+        }
+    });
+
+program.command('cli')
+    .description('Send commands to the local Connect EMS device via WebSocket')
+    .argument('<command>', 'Command to send (e.g., trigger-device-scan)')
+    .option('--host <host>', 'Device IP address or hostname', 'localhost')
+    .option('--port <port>', 'Device port number', `${DEFAULT_DEVICE_PORT}`)
+    .requiredOption('--token <token>', 'Debug token from the Connect EMS device')
+    .action(async (command: string, options: CliCommandOptions) => {
+        try {
+            await cliCommand(command, options);
+        } catch (error) {
+            if (error instanceof CLIError) {
+                console.error(`❌ ${error.message}`);
+                process.exit(error.exitCode);
+            }
+            handleError(error, 'sending CLI command');
         }
     });
 
