@@ -1,6 +1,6 @@
 export const DEFAULT_REGISTRY_URL = 'https://api.hems1.de';
 export const DEFAULT_DEVICE_HOST = 'localhost';
-export const DEFAULT_DEVICE_PORT = 6022;
+export const DEFAULT_DEVICE_PORT = 443;
 
 export const FILE_NAMES = {
     PACKAGE_CONFIG: 'energy-app.package.ts',

@@ -4,8 +4,8 @@ import {execSync} from 'child_process';
 import type {DevPackageInstallRequest, DevPackageInstallResponse} from './types/index.js';
 import {FILE_NAMES} from './constants/defaults.js';
 import {CLIError} from './utils/error-handler.js';
-import {Agent} from 'undici'
 import {EnergyAppPackageDefinition} from "@hems-one/energy-app-sdk";
+import { WebSocketCommand, type WebSocketCommandOptions } from './utils/websocket-command.js';
 
 export const installDevPackage = async (
     deviceHost: string,
@@ -47,44 +47,46 @@ export const installDevPackage = async (
 
     console.log(`🚀 Installing package to device at ${deviceHost}:${devicePort}...`);
 
-    const httpsAgent = new Agent({
-        connect: {
-            rejectUnauthorized: false
-        }
-    })
-
     try {
+        const wsOptions: WebSocketCommandOptions = {
+            host: deviceHost,
+            port: devicePort,
+            token: debugToken
+        };
 
-        const response = await fetch(`https://${deviceHost}:${devicePort}/dev-package/install`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(payload),
-            dispatcher: httpsAgent
+        const wsCommand = new WebSocketCommand(wsOptions);
+
+        const response = await wsCommand.execute<DevPackageInstallResponse>({
+            command: 'install-dev-package',
+            payload: payload
         });
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`Failed to install package: ${response.status} ${response.statusText}\n${errorText}`)
-            throw new CLIError(`Failed to install package: ${response.status} ${response.statusText}\n${errorText}`);
+        if (response.status === 'error') {
+            throw new CLIError(response.message || 'Package installation failed');
         }
 
-        const result = await response.json() as DevPackageInstallResponse;
-
         console.log('✅ Package installation successful!');
-        console.log(`📦 Package: ${result.packageName} (${result.packageId})`);
-        console.log(`🔢 Version: ${result.packageVersion}`);
-        console.log(`💬 Message: ${result.message}`);
+        console.log(`💬 Message: ${response.message}`);
+
+        if (response.data) {
+            console.log(`📦 Package: ${response.data.packageName} (${response.data.packageId})`);
+            console.log(`🔢 Version: ${response.data.packageVersion}`);
+        }
 
         // Clean up bundle file
         fs.unlinkSync(bundlePath);
         console.log('🧹 Cleaned up temporary bundle file');
     } catch (error) {
-        console.error(`Failed to install package: ${error}`, error)
+        // Clean up bundle file in case of error
+        if (fs.existsSync(bundlePath)) {
+            fs.unlinkSync(bundlePath);
+        }
+
+        console.error(`Failed to install package: ${error}`)
         if (error instanceof CLIError) {
             throw error;
         }
+        throw new CLIError(`Package installation failed: ${error}`);
     }
 
 

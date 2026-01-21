@@ -1,7 +1,6 @@
 import WebSocket from 'ws';
 import type {CommandOptions} from '../types';
-import {readEnyoPackageConfig} from "../utils/file-utils.js";
-import {DEFAULT_DEVICE_PORT, FILE_NAMES} from "../constants/defaults.js";
+import {DEFAULT_DEVICE_PORT} from "../constants/defaults.js";
 import {validatePort} from "../utils/error-handler.js";
 
 interface MockNetworkDeviceMessage {
@@ -26,7 +25,6 @@ export interface MockDeviceOptions extends CommandOptions {
 
 export async function mockDeviceCommand(options: MockDeviceOptions): Promise<void> {
     const {ports, ipAddress, host, port, token} = options;
-    const config = await readEnyoPackageConfig(FILE_NAMES.PACKAGE_CONFIG);
 
     const parsedPorts = ports.split(',').map(port => {
         const num = parseInt(port.trim(), 10);
@@ -47,8 +45,7 @@ export async function mockDeviceCommand(options: MockDeviceOptions): Promise<voi
         const ws = new WebSocket(wsUrl, {
             rejectUnauthorized: false,
             headers: {
-                'authorization': `Bearer ${token}`,
-                'package-name': config.packageName
+                'authorization': `Bearer ${token}`
             }
         });
 

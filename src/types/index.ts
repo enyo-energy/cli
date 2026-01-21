@@ -10,10 +10,14 @@ export interface DevPackageInstallRequest {
 }
 
 export interface DevPackageInstallResponse {
+    type: 'install-dev-package-response';
+    status: 'success' | 'error';
     message: string;
-    packageId: string;
-    packageName: string;
-    packageVersion: number;
+    data?: {
+        packageId: string;
+        packageName: string;
+        packageVersion: number;
+    };
 }
 
 export interface ReleaseResponse {
@@ -29,4 +33,8 @@ export interface CommandOptions {
     apiKey?: string;
     registry?: string;
     file?: string;
+}
+
+export interface SubscribeLogsOptions extends CommandOptions {
+    packageName?: string;
 }

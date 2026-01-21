@@ -5,15 +5,18 @@ import {installCommand} from './commands/install.js';
 import {releaseCommand} from './commands/release.js';
 import {mockDeviceCommand, type MockDeviceOptions} from './commands/mock-device.js';
 import {launchSimulationCommand, type LaunchSimulationOptions} from './commands/launch-simulation.js';
-import {cliCommand, type CliCommandOptions} from './commands/cli.js';
-import {handleError, CLIError} from './utils/error-handler.js';
-import type {CommandOptions} from './types';
-import {DEFAULT_DEVICE_PORT} from "./constants/defaults.js";
+import {pingCommand} from './commands/ping.js';
+import {subscribeLogsCommand} from './commands/subscribe-logs.js';
+import {infoCommand} from './commands/info.js';
+import {triggerDeviceScanCommand} from './commands/trigger-device-scan.js';
+import {CLIError, handleError} from './utils/error-handler.js';
+import type {CommandOptions, SubscribeLogsOptions} from './types';
+import {DEFAULT_DEVICE_HOST, DEFAULT_DEVICE_PORT} from "./constants/defaults.js";
 
 program.version('0.0.1', '-v, --version', 'output the current version');
 
 program.command('init')
-    .description('Create a new Connect EMS Package')
+    .description('Create a new enyo Package')
     .action(() => {
         try {
             initCommand();
@@ -27,10 +30,11 @@ program.command('init')
     });
 
 program.command('install')
-    .description('Build and install the package on a local Connect EMS device for development')
+    .description('Build and install the package on a local enyo device for development')
     .option('--host <host>', 'Device IP address or hostname', 'localhost')
     .option('--port <port>', 'Device port number', `${DEFAULT_DEVICE_PORT}`)
-    .requiredOption('--token <token>', 'Debug token from the Connect EMS device')
+    .requiredOption('--token <token>', 'Debug token from the enyo device')
+    .option('-f, --file <file>', 'Specific config file to install (if not set, searches for *.package.ts files)')
     .action(async (options: CommandOptions) => {
         try {
             await installCommand(options);
@@ -63,7 +67,7 @@ program.command('release')
 program.command('mock-device')
     .description('Create a mock network device for testing')
     .requiredOption('--ports <ports>', 'Comma-separated list of port numbers (e.g., "80,443,8080")')
-    .requiredOption('--token <token>', 'Debug token from the Connect EMS device')
+    .requiredOption('--token <token>', 'Debug token from the enyo device')
     .option('--ip-address <ipAddress>', 'IP address for the mock device')
     .option('--host <host>', 'Device IP address or hostname', 'localhost')
     .option('--port <port>', 'Device port number', `${DEFAULT_DEVICE_PORT}`)
@@ -95,21 +99,72 @@ program.command('launch-simulation')
         }
     });
 
-program.command('cli')
-    .description('Send commands to the local Connect EMS device via WebSocket')
-    .argument('<command>', 'Command to send (e.g., trigger-device-scan)')
+program.command('ping')
+    .description('Test connection to the enyo device')
     .option('--host <host>', 'Device IP address or hostname', 'localhost')
     .option('--port <port>', 'Device port number', `${DEFAULT_DEVICE_PORT}`)
-    .requiredOption('--token <token>', 'Debug token from the Connect EMS device')
-    .action(async (command: string, options: CliCommandOptions) => {
+    .requiredOption('--token <token>', 'Debug token from the enyo device')
+    .action(async (options: CommandOptions) => {
         try {
-            await cliCommand(command, options);
+            await pingCommand(options);
         } catch (error) {
             if (error instanceof CLIError) {
                 console.error(`❌ ${error.message}`);
                 process.exit(error.exitCode);
             }
-            handleError(error, 'sending CLI command');
+            handleError(error, 'pinging device');
+        }
+    });
+
+program.command('subscribe-logs')
+    .description('Subscribe to log messages from the enyo device')
+    .option('--host <host>', 'Device IP address or hostname', 'localhost')
+    .option('--port <port>', 'Device port number', `${DEFAULT_DEVICE_PORT}`)
+    .requiredOption('--token <token>', 'Debug token from the enyo device')
+    .option('--package-name <packageName>', 'Filter logs for specific package')
+    .action(async (options: SubscribeLogsOptions) => {
+        try {
+            await subscribeLogsCommand(options);
+        } catch (error) {
+            if (error instanceof CLIError) {
+                console.error(`❌ ${error.message}`);
+                process.exit(error.exitCode);
+            }
+            handleError(error, 'subscribing to logs');
+        }
+    });
+
+program.command('info')
+    .description('Get device information and connected packages')
+    .option('--host <host>', 'Device IP address or hostname', 'localhost')
+    .option('--port <port>', 'Device port number', `${DEFAULT_DEVICE_PORT}`)
+    .requiredOption('--token <token>', 'Debug token from the enyo device')
+    .action(async (options: CommandOptions) => {
+        try {
+            await infoCommand(options);
+        } catch (error) {
+            if (error instanceof CLIError) {
+                console.error(`❌ ${error.message}`);
+                process.exit(error.exitCode);
+            }
+            handleError(error, 'getting device information');
+        }
+    });
+
+program.command('trigger-device-scan')
+    .description('Trigger a scan for network devices')
+    .option('--host <host>', 'Device IP address or hostname', 'localhost')
+    .option('--port <port>', 'Device port number', `${DEFAULT_DEVICE_PORT}`)
+    .requiredOption('--token <token>', 'Debug token from the enyo device')
+    .action(async (options: CommandOptions) => {
+        try {
+            await triggerDeviceScanCommand(options);
+        } catch (error) {
+            if (error instanceof CLIError) {
+                console.error(`❌ ${error.message}`);
+                process.exit(error.exitCode);
+            }
+            handleError(error, 'triggering device scan');
         }
     });
 

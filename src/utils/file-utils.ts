@@ -62,3 +62,43 @@ export const readAndValidatePackageConfig = async (filePath: string): Promise<En
         return null;
     }
 };
+
+export const selectPackageConfig = async (specifiedFile?: string): Promise<string> => {
+    if (specifiedFile) {
+        // Use the specified file
+        const resolvedPath = path.resolve(specifiedFile);
+        if (!fs.existsSync(resolvedPath)) {
+            throw new CLIError(`Specified config file not found: ${specifiedFile}`);
+        }
+        return resolvedPath;
+    }
+
+    // Auto-discover package configs
+    const packageConfigs = findPackageConfigs();
+
+    if (packageConfigs.length === 0) {
+        // Fallback to the default config file for backward compatibility
+        const defaultConfig = FILE_NAMES.PACKAGE_CONFIG;
+        if (fs.existsSync(defaultConfig)) {
+            console.log(`📖 Using default package config: ${defaultConfig}`);
+            return path.resolve(defaultConfig);
+        }
+        throw new CLIError('No package config files (*.package.ts) found in the project');
+    }
+
+    if (packageConfigs.length === 1) {
+        console.log(`📖 Using package config: ${packageConfigs[0]}`);
+        return path.resolve(packageConfigs[0]);
+    }
+
+    // Multiple configs found, use the first one
+    console.log(`📦 Found ${packageConfigs.length} package configs:`);
+    packageConfigs.forEach((config, index) => {
+        const indicator = index === 0 ? '→' : ' ';
+        console.log(`   ${indicator} ${config}`);
+    });
+    console.log(`📖 Using the first config: ${packageConfigs[0]}`);
+    console.log(`💡 Tip: Use --file to specify a different config file`);
+
+    return path.resolve(packageConfigs[0]);
+};
