@@ -45,7 +45,7 @@ export class WebSocketLogger {
                 console.log('✅ WebSocket connected');
 
                 // Send subscribe-logs message after connection
-                this.ws?.send(JSON.stringify({ type: 'subscribe-logs' }));
+                this.ws?.send(JSON.stringify({ command: 'subscribe-logs' }));
 
                 resolve();
             });
@@ -84,7 +84,7 @@ export class WebSocketLogger {
     }
 
     private getLevelIcon(level: string): string {
-        switch (level.toLowerCase()) {
+        switch (level?.toLowerCase()) {
             case 'error': return '❌';
             case 'warn': case 'warning': return '⚠️';
             case 'info': return 'ℹ️';

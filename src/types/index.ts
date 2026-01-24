@@ -1,5 +1,4 @@
 export interface DevPackageInstallRequest {
-    packageId: string;
     packageName: string;
     packageVersion: number;
     packageBundle: string;

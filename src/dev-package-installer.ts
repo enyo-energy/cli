@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import {execSync} from 'child_process';
-import type {DevPackageInstallRequest, DevPackageInstallResponse} from './types/index.js';
+import type {DevPackageInstallRequest, DevPackageInstallResponse} from './types';
 import {FILE_NAMES} from './constants/defaults.js';
 import {CLIError} from './utils/error-handler.js';
 import {EnergyAppPackageDefinition} from "@hems-one/energy-app-sdk";
@@ -35,7 +35,6 @@ export const installDevPackage = async (
     const bundleBase64 = bundleBuffer.toString('base64');
 
     const payload: DevPackageInstallRequest = {
-        packageId: config.packageName,
         packageName: config.packageName,
         packageVersion: parseInt(config.version, 10),
         packageBundle: bundleBase64,
