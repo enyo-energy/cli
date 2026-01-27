@@ -10,8 +10,9 @@ import {subscribeLogsCommand} from './commands/subscribe-logs.js';
 import {infoCommand} from './commands/info.js';
 import {triggerDeviceScanCommand} from './commands/trigger-device-scan.js';
 import {CLIError, handleError} from './utils/error-handler.js';
-import type {CommandOptions, SubscribeLogsOptions} from './types';
-import {DEFAULT_DEVICE_HOST, DEFAULT_DEVICE_PORT} from "./constants/defaults.js";
+import type {CommandOptions, SecretCommandOptions, SubscribeLogsOptions} from './types';
+import {DEFAULT_DEVICE_PORT} from "./constants/defaults.js";
+import {secretCommand} from './commands/secret.js';
 
 program.version('0.0.1', '-v, --version', 'output the current version');
 
@@ -165,6 +166,25 @@ program.command('trigger-device-scan')
                 process.exit(error.exitCode);
             }
             handleError(error, 'triggering device scan');
+        }
+    });
+
+program.command('secret')
+    .description('Save encrypted secrets to Enyo API')
+    .requiredOption('--name <name>', 'Name of the secret')
+    .option('--value <value>', 'Value of the secret (will be encrypted)')
+    .option('--file <file>', 'Path to JSON file to use as secret value')
+    .requiredOption('--token <token>', 'Developer Org Access Token')
+    .requiredOption('--master-secret <masterSecret>', 'Master secret used for encryption')
+    .action(async (options: SecretCommandOptions) => {
+        try {
+            await secretCommand(options);
+        } catch (error) {
+            if (error instanceof CLIError) {
+                console.error(`❌ ${error.message}`);
+                process.exit(error.exitCode);
+            }
+            handleError(error, 'managing secrets');
         }
     });
 

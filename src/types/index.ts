@@ -37,3 +37,22 @@ export interface CommandOptions {
 export interface SubscribeLogsOptions extends CommandOptions {
     packageName?: string;
 }
+
+export interface SecretCommandOptions {
+    name: string;
+    value?: string;
+    file?: string;
+    token: string;
+    masterSecret: string;
+}
+
+export interface SecretRequest {
+    name: string;
+    encryptedSecret: string;
+}
+
+export interface SecretResponse {
+    success: boolean;
+    message?: string;
+    error?: string;
+}
