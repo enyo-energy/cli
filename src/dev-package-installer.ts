@@ -4,7 +4,7 @@ import {execSync} from 'child_process';
 import type {DevPackageInstallRequest, DevPackageInstallResponse} from './types';
 import {FILE_NAMES} from './constants/defaults.js';
 import {CLIError} from './utils/error-handler.js';
-import {EnergyAppPackageDefinition} from "@hems-one/energy-app-sdk";
+import {EnergyAppPackageDefinition} from "@enyo-energy/energy-app-sdk";
 import { WebSocketCommand, type WebSocketCommandOptions } from './utils/websocket-command.js';
 
 export const installDevPackage = async (
@@ -81,10 +81,12 @@ export const installDevPackage = async (
             fs.unlinkSync(bundlePath);
         }
 
+        // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
         console.error(`Failed to install package: ${error}`)
         if (error instanceof CLIError) {
             throw error;
         }
+        // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
         throw new CLIError(`Package installation failed: ${error}`);
     }
 

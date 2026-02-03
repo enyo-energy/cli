@@ -7,7 +7,7 @@ import {readEnyoPackageConfig, findPackageConfigs, readAndValidatePackageConfig}
 import {CLIError, handleError} from '../utils/error-handler.js';
 import {DEFAULT_REGISTRY_URL, FILE_NAMES} from '../constants/defaults.js';
 import type {CommandOptions, ReleaseResponse} from '../types';
-import {EnergyAppPackageDefinition} from "@hems-one/energy-app-sdk";
+import {EnergyAppPackageDefinition} from "@enyo-energy/energy-app-sdk";
 
 export const releaseCommand = async (options: CommandOptions): Promise<void> => {
     try {
@@ -16,11 +16,12 @@ export const releaseCommand = async (options: CommandOptions): Promise<void> => 
         }
 
         const registryUrl = options.registry || DEFAULT_REGISTRY_URL;
+        const channel = options.channel || 'production';
 
         if (options.file) {
             console.log(`📖 Reading package configuration from ${options.file}...`);
             const config = await readEnyoPackageConfig(options.file);
-            await processReleaseForConfig(config, options.apiKey, registryUrl);
+            await processReleaseForConfig(config, options.apiKey, registryUrl, channel);
         } else {
             console.log('🔍 Searching for *.package.ts files...');
             const configFiles = findPackageConfigs();
@@ -50,7 +51,7 @@ export const releaseCommand = async (options: CommandOptions): Promise<void> => 
             for (let i = 0; i < validConfigs.length; i++) {
                 const {file, config} = validConfigs[i];
                 console.log(`\n🚀 Processing release ${i + 1}/${validConfigs.length}: ${file}`);
-                await processReleaseForConfig(config, options.apiKey, registryUrl);
+                await processReleaseForConfig(config, options.apiKey, registryUrl, channel);
             }
 
             console.log(`\n🎉 Successfully processed ${validConfigs.length} release(s)!`);
@@ -67,7 +68,8 @@ export const releaseCommand = async (options: CommandOptions): Promise<void> => 
 const processReleaseForConfig = async (
     config: EnergyAppPackageDefinition,
     apiKey: string,
-    registryUrl: string
+    registryUrl: string,
+    channel: 'production' | 'staging'
 ): Promise<void> => {
     console.log('📦 Building bundle...');
     execSync(`tar -czf ${FILE_NAMES.BUNDLE} dist`, {stdio: 'inherit'});
@@ -78,7 +80,7 @@ const processReleaseForConfig = async (
     }
 
     console.log(`🚀 Creating release on ${registryUrl} using SDK Version ${config.sdkVersion}`);
-    await createRelease(bundlePath, config, apiKey, registryUrl);
+    await createRelease(bundlePath, config, apiKey, registryUrl, channel);
 };
 
 const calculateFileChecksum = (filePath: string): string => {
@@ -132,7 +134,8 @@ const createRelease = async (
     bundlePath: string,
     config: EnergyAppPackageDefinition,
     apiKey: string,
-    registry: string
+    registry: string,
+    channel: 'production' | 'staging'
 ): Promise<void> => {
     // Read SDK version from package.json
 
@@ -145,7 +148,7 @@ const createRelease = async (
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${apiKey}`,
         },
-        body: JSON.stringify({...config, uploadLogo})
+        body: JSON.stringify({...config, uploadLogo, channel})
     });
 
     if (!response.ok) {

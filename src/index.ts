@@ -11,7 +11,7 @@ import {infoCommand} from './commands/info.js';
 import {triggerDeviceScanCommand} from './commands/trigger-device-scan.js';
 import {CLIError, handleError} from './utils/error-handler.js';
 import type {CommandOptions, SecretCommandOptions, SubscribeLogsOptions} from './types';
-import {DEFAULT_DEVICE_PORT} from "./constants/defaults.js";
+import {DEFAULT_DEVICE_PORT, DEFAULT_REGISTRY_URL} from "./constants/defaults.js";
 import {secretCommand} from './commands/secret.js';
 
 program.version('0.0.1', '-v, --version', 'output the current version');
@@ -51,8 +51,9 @@ program.command('install')
 program.command('release')
     .description('Create a new release for your Energy app and upload to the enyo store.')
     .requiredOption('--api-key <apiKey>', 'Your Developer Org API Key')
-    .option('--registry <registry>', 'enyo Package Registry URL', 'https://api.hems1.de')
+    .option('--registry <registry>', 'enyo Package Registry URL', DEFAULT_REGISTRY_URL)
     .option('-f, --file <file>', 'Specific config file to release (if not set, searches for all *.package.ts files)')
+    .option('--channel <channel>', 'Package channel (production or staging)', 'production')
     .action(async (options: CommandOptions) => {
         try {
             await releaseCommand(options);
@@ -172,10 +173,12 @@ program.command('trigger-device-scan')
 program.command('secret')
     .description('Save encrypted secrets to Enyo API')
     .requiredOption('--name <name>', 'Name of the secret')
+    .requiredOption('--api-key <apiKey>', 'Developer Org API key')
+    .requiredOption('--secret <secret>', 'Secret used for encryption')
     .option('--value <value>', 'Value of the secret (will be encrypted)')
     .option('--file <file>', 'Path to JSON file to use as secret value')
-    .requiredOption('--token <token>', 'Developer Org Access Token')
-    .requiredOption('--master-secret <masterSecret>', 'Master secret used for encryption')
+    .option('--registry <registry>', 'API Registry', DEFAULT_REGISTRY_URL)
+    .option('--channel <channel>', 'Package channel (production or staging)', 'production')
     .action(async (options: SecretCommandOptions) => {
         try {
             await secretCommand(options);

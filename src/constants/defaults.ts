@@ -1,4 +1,4 @@
-export const DEFAULT_REGISTRY_URL = 'https://api.hems1.de';
+export const DEFAULT_REGISTRY_URL = 'https://api.enyo-energy.de';
 export const DEFAULT_DEVICE_HOST = 'localhost';
 export const DEFAULT_DEVICE_PORT = 443;
 

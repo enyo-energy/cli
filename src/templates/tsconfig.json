@@ -5,10 +5,10 @@
     "module": "ESNext",
     "strict": true,
     "skipLibCheck": true,
+    "verbatimModuleSyntax": true,
     "resolveJsonModule": true,
     "moduleResolution": "bundler",
     "useDefineForClassFields": true
   },
-  "include": ["src"],
-  "exclude": ["src/templates"]
+  "include": ["src"]
 }

@@ -1,53 +1,16 @@
-export const RS_BUILD_CONFIG = `import { defineConfig } from '@rsbuild/core';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-export default defineConfig({
-  output: {
-    target: 'node',
-  },
-});
-`;
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const TEMPLATES_DIR = path.join(__dirname, '../templates');
 
-export const TS_CONFIG = `{
-  "compilerOptions": {
-    "target": "ES2020",
-    "lib": ["ES2020"],
-    "module": "ESNext",
-    "strict": true,
-    "skipLibCheck": true,
-    "verbatimModuleSyntax": true,
-    "resolveJsonModule": true,
-    "moduleResolution": "bundler",
-    "useDefineForClassFields": true
-  },
-  "include": ["src"]
+export function getTemplate(name: string): string {
+    return fs.readFileSync(path.join(TEMPLATES_DIR, name), 'utf-8');
 }
-`;
 
-export const EXAMPLE_INDEX_FILE = `import {EnergyApp} from "../../connect-ems-api";
-
-const client = new EnergyApp();
-
-client.register((packageName: string, version: number) => {
-    // The packageName and version number is provided by the released package in the enyo Marketplace. You can use that information for whatever you want.
-    console.log(\`network state is \${client.isOnline() ? 'online' : 'offline'}. Package \${packageName} version \${version} is registered.\`);
-    // This starts you application, do all the things in here!
-    client.shutdown(async () => {
-        console.log('Shutting down gracefully...');
-        // this is called before planned system shutdown (e.g. update installation).
-    })
-});`;
-
-export const EXAMPLE_PACKAGE_FILE = `import {defineEnergyAppPackage} from "../../connect-ems-api";
-
-export default defineEnergyAppPackage({
-    version: '1',
-    packageName: 'example-package',
-    permissions: [
-        'RestrictedInternetAccess'
-    ],
-    options: {
-        restrictedInternetAccess: {
-            origins: ['localhost:6020']
-        }
-    }
-})`;
+// For backwards compatibility
+export const RS_BUILD_CONFIG = () => getTemplate('rsbuild.config.ts');
+export const TS_CONFIG = () => getTemplate('tsconfig.json');
+export const EXAMPLE_INDEX_FILE = () => getTemplate('index.ts');
+export const EXAMPLE_PACKAGE_FILE = () => getTemplate('energy-app.package.ts');

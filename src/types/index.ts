@@ -32,6 +32,7 @@ export interface CommandOptions {
     apiKey?: string;
     registry?: string;
     file?: string;
+    channel?: 'production' | 'staging';
 }
 
 export interface SubscribeLogsOptions extends CommandOptions {
@@ -42,13 +43,17 @@ export interface SecretCommandOptions {
     name: string;
     value?: string;
     file?: string;
-    token: string;
-    masterSecret: string;
+    apiKey: string;
+    secret: string;
+    registry?: string;
+    secretFile?: string;
+    channel?: 'production' | 'staging';
 }
 
 export interface SecretRequest {
     name: string;
     encryptedSecret: string;
+    channel: 'production' | 'staging';
 }
 
 export interface SecretResponse {

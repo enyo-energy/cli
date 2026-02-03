@@ -8,12 +8,12 @@ export const initCommand = (): void => {
     try {
         ensureFileExists(FILE_NAMES.PACKAGE_JSON, 'package.json');
 
-        writeFileIfNotExists(FILE_NAMES.RSBUILD_CONFIG, RS_BUILD_CONFIG);
-        writeFileIfNotExists(FILE_NAMES.TSCONFIG, TS_CONFIG);
+        writeFileIfNotExists(FILE_NAMES.RSBUILD_CONFIG, RS_BUILD_CONFIG());
+        writeFileIfNotExists(FILE_NAMES.TSCONFIG, TS_CONFIG());
 
         ensureDirectoryExists(FILE_NAMES.SRC_DIR);
-        writeFileIfNotExists(FILE_NAMES.SRC_INDEX, EXAMPLE_INDEX_FILE);
-        writeFileIfNotExists(FILE_NAMES.PACKAGE_CONFIG, EXAMPLE_PACKAGE_FILE);
+        writeFileIfNotExists(FILE_NAMES.SRC_INDEX, EXAMPLE_INDEX_FILE());
+        writeFileIfNotExists(FILE_NAMES.PACKAGE_CONFIG, EXAMPLE_PACKAGE_FILE());
 
         console.log('📦 Installing dependencies...');
         execSync(`npm install -D ${PACKAGE_DEPENDENCIES}`, { stdio: 'inherit' });
