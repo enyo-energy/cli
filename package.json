@@ -1,6 +1,6 @@
 {
   "name": "@enyo-energy/cli",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "The Enyo CLI is a npm-based cli to publish and deploy your Enyo Energy Apps to our store.",
   "main": "index.js",
   "bin": {
@@ -16,14 +16,14 @@
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kevin-kirch/connect-ems-cli.git"
+    "url": "git+https://github.com/enyo-energy/cli.git"
   },
   "author": "Kevin Kirch",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/kevin-kirch/connect-ems-cli/issues"
+    "url": "https://github.com/enyo-energy/cli/issues"
   },
-  "homepage": "https://github.com/kevin-kirch/connect-ems-cli#readme",
+  "homepage": "https://github.com/enyo-energy/cli#readme",
   "dependencies": {
     "@enyo-energy/energy-app-sdk": "^0.0.51",
     "@hems-one/simulated-devices": "^1.0.0",
