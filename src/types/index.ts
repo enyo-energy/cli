@@ -61,3 +61,14 @@ export interface SecretResponse {
     message?: string;
     error?: string;
 }
+
+export interface CoreUpdateOptions extends CommandOptions {
+    bundleVersion: string;
+}
+
+export interface CoreUpdateResponse {
+    type: 'core-update-response';
+    status: 'success' | 'error';
+    message: string;
+    data?: Record<string, unknown>;
+}
