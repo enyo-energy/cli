@@ -10,7 +10,7 @@ interface LogMessage {
     type: 'log';
     timestamp: string;
     level: string;
-    message: string;
+    message: { message: string };
 }
 
 type WebSocketMessage = AuthMessage | LogMessage;
@@ -80,7 +80,7 @@ export class WebSocketLogger {
     private logMessage(log: LogMessage): void {
         const timestamp = new Date(log.timestamp).toLocaleTimeString();
         const levelIcon = this.getLevelIcon(log.level);
-        console.log(`[${timestamp}] ${levelIcon} [${this.packageName}] ${log.message}`);
+        console.log(`[${timestamp}] ${levelIcon} [${this.packageName}] ${log.message.message}`);
     }
 
     private getLevelIcon(level: string): string {
