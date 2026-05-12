@@ -13,7 +13,7 @@ import type {CommandOptions, CoreUpdateOptions, SecretCommandOptions, SubscribeL
 import {DEFAULT_DEVICE_PORT, DEFAULT_REGISTRY_URL} from "./constants/defaults.js";
 import {secretCommand} from './commands/secret.js';
 
-program.version('0.0.1', '-v, --version', 'output the current version');
+program.version('0.0.3', '-v, --version', 'output the current version');
 
 program.command('init')
     .description('Create a new enyo Package')

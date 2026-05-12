@@ -159,7 +159,7 @@ const createRelease = async (
     }
 
     const data = await response.json() as ReleaseResponse;
-    const releasedVersion = data.version ?? data.packageVersion;
+    const releasedVersion = data.versionNumber;
 
     // Upload logo if logoUrl is provided
     if (data.logoUploadUrl && config.logo) {
@@ -185,7 +185,7 @@ const uploadBundle = (
     registry: string,
     uploadUrl: string,
     releaseId: string,
-    releasedVersion: string | number | undefined
+    releasedVersion: number
 ): Promise<void> => {
     return new Promise((resolve, reject) => {
         const fileStream = fs.createReadStream(bundlePath);
@@ -277,7 +277,7 @@ const finishRelease = async (
     releaseId: string,
     apiKey: string,
     registry: string,
-    releasedVersion: string | number | undefined
+    releasedVersion: number
 ): Promise<void> => {
     const response = await fetch(`${registry}/api/package-registry/finish-release`, {
         method: 'POST',
@@ -290,10 +290,7 @@ const finishRelease = async (
 
     if (response.status === 201) {
         console.log('✅ Release finished successfully.');
-
-        if (releasedVersion !== undefined) {
-            console.log(`🏷️ Released version: ${releasedVersion}`);
-        }
+        console.log(`🏷️ Released version: ${releasedVersion}`);
     } else {
         const errorText = await response.text();
         console.error(`❌ Error finishing release: ${response.status}`);

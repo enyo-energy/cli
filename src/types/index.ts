@@ -23,8 +23,7 @@ export interface ReleaseResponse {
     uploadUrl: string;
     releaseId: string;
     logoUploadUrl?: string;
-    version?: string | number;
-    packageVersion?: string | number;
+    versionNumber: number;
 }
 
 export interface CommandOptions {
