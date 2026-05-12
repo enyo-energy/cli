@@ -6,7 +6,7 @@ import {execSync} from 'child_process';
 import {readEnyoPackageConfig, findPackageConfigs, readAndValidatePackageConfig} from '../utils/file-utils.js';
 import {CLIError, handleError} from '../utils/error-handler.js';
 import {DEFAULT_REGISTRY_URL, FILE_NAMES} from '../constants/defaults.js';
-import type {CommandOptions, ReleaseResponse} from '../types';
+import type {CommandOptions, FinishReleaseResponse, ReleaseResponse} from '../types';
 import {EnergyAppPackageDefinition} from "@enyo-energy/energy-app-sdk";
 
 export const releaseCommand = async (options: CommandOptions): Promise<void> => {
@@ -283,10 +283,24 @@ const finishRelease = async (releaseId: string, apiKey: string, registry: string
 
     if (response.status === 201) {
         console.log('✅ Release finished successfully.');
+
+        const releasedVersion = await parseReleasedVersion(response);
+        if (releasedVersion !== undefined) {
+            console.log(`🏷️ Released version: ${releasedVersion}`);
+        }
     } else {
         const errorText = await response.text();
         console.error(`❌ Error finishing release: ${response.status}`);
         console.error(errorText);
         throw new CLIError(`Failed to finish release: ${response.status}`);
+    }
+};
+
+const parseReleasedVersion = async (response: Response): Promise<string | number | undefined> => {
+    try {
+        const data = await response.json() as FinishReleaseResponse;
+        return data.version ?? data.packageVersion;
+    } catch {
+        return undefined;
     }
 };

@@ -25,6 +25,12 @@ export interface ReleaseResponse {
     logoUploadUrl?: string;
 }
 
+export interface FinishReleaseResponse {
+    version?: string | number;
+    packageVersion?: string | number;
+    packageName?: string;
+}
+
 export interface CommandOptions {
     host?: string;
     port?: string;
