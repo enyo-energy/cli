@@ -6,7 +6,7 @@ import {execSync} from 'child_process';
 import {readEnyoPackageConfig, findPackageConfigs, readAndValidatePackageConfig} from '../utils/file-utils.js';
 import {CLIError, handleError} from '../utils/error-handler.js';
 import {DEFAULT_REGISTRY_URL, FILE_NAMES} from '../constants/defaults.js';
-import type {CommandOptions, FinishReleaseResponse, ReleaseResponse} from '../types';
+import type {CommandOptions, ReleaseResponse} from '../types';
 import {EnergyAppPackageDefinition} from "@enyo-energy/energy-app-sdk";
 
 export const releaseCommand = async (options: CommandOptions): Promise<void> => {
@@ -159,6 +159,7 @@ const createRelease = async (
     }
 
     const data = await response.json() as ReleaseResponse;
+    const releasedVersion = data.version ?? data.packageVersion;
 
     // Upload logo if logoUrl is provided
     if (data.logoUploadUrl && config.logo) {
@@ -175,7 +176,7 @@ const createRelease = async (
         }
     }
 
-    await uploadBundle(bundlePath, apiKey, registry, data.uploadUrl, data.releaseId);
+    await uploadBundle(bundlePath, apiKey, registry, data.uploadUrl, data.releaseId, releasedVersion);
 };
 
 const uploadBundle = (
@@ -183,7 +184,8 @@ const uploadBundle = (
     apiKey: string,
     registry: string,
     uploadUrl: string,
-    releaseId: string
+    releaseId: string,
+    releasedVersion: string | number | undefined
 ): Promise<void> => {
     return new Promise((resolve, reject) => {
         const fileStream = fs.createReadStream(bundlePath);
@@ -208,7 +210,7 @@ const uploadBundle = (
             res.on('end', () => {
                 if (res.statusCode === 200 || res.statusCode === 201) {
                     console.log('✅ Bundle uploaded successfully.');
-                    finishRelease(releaseId, apiKey, registry)
+                    finishRelease(releaseId, apiKey, registry, releasedVersion)
                         .then(() => resolve())
                         .catch((error: Error) => reject(error));
                 } else {
@@ -271,7 +273,12 @@ const uploadLogoFile = (logoPath: string, logoUrl: string): Promise<void> => {
     });
 };
 
-const finishRelease = async (releaseId: string, apiKey: string, registry: string): Promise<void> => {
+const finishRelease = async (
+    releaseId: string,
+    apiKey: string,
+    registry: string,
+    releasedVersion: string | number | undefined
+): Promise<void> => {
     const response = await fetch(`${registry}/api/package-registry/finish-release`, {
         method: 'POST',
         headers: {
@@ -284,7 +291,6 @@ const finishRelease = async (releaseId: string, apiKey: string, registry: string
     if (response.status === 201) {
         console.log('✅ Release finished successfully.');
 
-        const releasedVersion = await parseReleasedVersion(response);
         if (releasedVersion !== undefined) {
             console.log(`🏷️ Released version: ${releasedVersion}`);
         }
@@ -293,14 +299,5 @@ const finishRelease = async (releaseId: string, apiKey: string, registry: string
         console.error(`❌ Error finishing release: ${response.status}`);
         console.error(errorText);
         throw new CLIError(`Failed to finish release: ${response.status}`);
-    }
-};
-
-const parseReleasedVersion = async (response: Response): Promise<string | number | undefined> => {
-    try {
-        const data = await response.json() as FinishReleaseResponse;
-        return data.version ?? data.packageVersion;
-    } catch {
-        return undefined;
     }
 };
