@@ -26,6 +26,11 @@ export interface ReleaseResponse {
     versionNumber: number;
 }
 
+export interface ReleaseNote {
+    language: 'de' | 'en';
+    note: string;
+}
+
 export interface CommandOptions {
     host?: string;
     port?: string;
@@ -34,10 +39,18 @@ export interface CommandOptions {
     registry?: string;
     file?: string;
     channel?: 'production' | 'staging';
+    releaseNotes?: string;
 }
 
 export interface SubscribeLogsOptions extends CommandOptions {
     packageName?: string;
+}
+
+export interface SubscribeEebusOptions extends CommandOptions {
+    /** Emit one raw JSON line per message — table-renderer friendly. */
+    json?: boolean;
+    /** Print full SKI instead of the abbreviated last-4-hex form. */
+    fullSki?: boolean;
 }
 
 export interface SecretCommandOptions {

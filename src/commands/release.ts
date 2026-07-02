@@ -5,8 +5,9 @@ import crypto from 'crypto';
 import {execSync} from 'child_process';
 import {readEnyoPackageConfig, findPackageConfigs, readAndValidatePackageConfig} from '../utils/file-utils.js';
 import {CLIError, handleError} from '../utils/error-handler.js';
+import {collectReleaseNotes} from '../utils/release-notes.js';
 import {DEFAULT_REGISTRY_URL, FILE_NAMES} from '../constants/defaults.js';
-import type {CommandOptions, ReleaseResponse} from '../types';
+import type {CommandOptions, ReleaseNote, ReleaseResponse} from '../types';
 import {EnergyAppPackageDefinition} from "@enyo-energy/energy-app-sdk";
 
 export const releaseCommand = async (options: CommandOptions): Promise<void> => {
@@ -18,10 +19,13 @@ export const releaseCommand = async (options: CommandOptions): Promise<void> => 
         const registryUrl = options.registry || DEFAULT_REGISTRY_URL;
         const channel = options.channel || 'production';
 
+        // Collect release notes once and share them across all package configs.
+        const releaseNote = await collectReleaseNotes(options.releaseNotes);
+
         if (options.file) {
             console.log(`📖 Reading package configuration from ${options.file}...`);
             const config = await readEnyoPackageConfig(options.file);
-            await processReleaseForConfig(config, options.apiKey, registryUrl, channel);
+            await processReleaseForConfig(config, options.apiKey, registryUrl, channel, releaseNote);
         } else {
             console.log('🔍 Searching for *.package.ts files...');
             const configFiles = findPackageConfigs();
@@ -51,7 +55,7 @@ export const releaseCommand = async (options: CommandOptions): Promise<void> => 
             for (let i = 0; i < validConfigs.length; i++) {
                 const {file, config} = validConfigs[i];
                 console.log(`\n🚀 Processing release ${i + 1}/${validConfigs.length}: ${file}`);
-                await processReleaseForConfig(config, options.apiKey, registryUrl, channel);
+                await processReleaseForConfig(config, options.apiKey, registryUrl, channel, releaseNote);
             }
 
             console.log(`\n🎉 Successfully processed ${validConfigs.length} release(s)!`);
@@ -69,7 +73,8 @@ const processReleaseForConfig = async (
     config: EnergyAppPackageDefinition,
     apiKey: string,
     registryUrl: string,
-    channel: 'production' | 'staging'
+    channel: 'production' | 'staging',
+    releaseNote?: ReleaseNote[]
 ): Promise<void> => {
     console.log('📦 Building bundle...');
     execSync(`tar -czf ${FILE_NAMES.BUNDLE} dist`, {stdio: 'inherit'});
@@ -80,7 +85,7 @@ const processReleaseForConfig = async (
     }
 
     console.log(`🚀 Creating release on ${registryUrl} using SDK Version ${config.sdkVersion}`);
-    await createRelease(bundlePath, config, apiKey, registryUrl, channel);
+    await createRelease(bundlePath, config, apiKey, registryUrl, channel, releaseNote);
 };
 
 const calculateFileChecksum = (filePath: string): string => {
@@ -135,7 +140,8 @@ const createRelease = async (
     config: EnergyAppPackageDefinition,
     apiKey: string,
     registry: string,
-    channel: 'production' | 'staging'
+    channel: 'production' | 'staging',
+    releaseNote?: ReleaseNote[]
 ): Promise<void> => {
     // Read SDK version from package.json
 
@@ -148,7 +154,7 @@ const createRelease = async (
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${apiKey}`,
         },
-        body: JSON.stringify({...config, uploadLogo, channel})
+        body: JSON.stringify({...config, uploadLogo, channel, ...(releaseNote ? {releaseNote} : {})})
     });
 
     if (!response.ok) {

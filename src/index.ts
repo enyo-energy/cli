@@ -5,11 +5,12 @@ import {installCommand} from './commands/install.js';
 import {releaseCommand} from './commands/release.js';
 import {pingCommand} from './commands/ping.js';
 import {subscribeLogsCommand} from './commands/subscribe-logs.js';
+import {subscribeEebusCommand} from './commands/subscribe-eebus.js';
 import {infoCommand} from './commands/info.js';
 import {triggerDeviceScanCommand} from './commands/trigger-device-scan.js';
 import {CLIError, handleError} from './utils/error-handler.js';
 import {coreUpdateCommand} from './commands/core-update.js';
-import type {CommandOptions, CoreUpdateOptions, SecretCommandOptions, SubscribeLogsOptions} from './types';
+import type {CommandOptions, CoreUpdateOptions, SecretCommandOptions, SubscribeEebusOptions, SubscribeLogsOptions} from './types';
 import {DEFAULT_DEVICE_PORT, DEFAULT_REGISTRY_URL} from "./constants/defaults.js";
 import {secretCommand} from './commands/secret.js';
 
@@ -53,6 +54,7 @@ program.command('release')
     .option('--registry <registry>', 'enyo Package Registry URL', DEFAULT_REGISTRY_URL)
     .option('-f, --file <file>', 'Specific config file to release (if not set, searches for all *.package.ts files)')
     .option('--channel <channel>', 'Package channel (production or staging)', 'production')
+    .option('--release-notes <file>', 'Path to a JSON file with release notes, e.g. {"de":"…","en":"…"} (skips the interactive prompt)')
     .action(async (options: CommandOptions) => {
         try {
             await releaseCommand(options);
@@ -97,6 +99,25 @@ program.command('subscribe-logs')
                 process.exit(error.exitCode);
             }
             handleError(error, 'subscribing to logs');
+        }
+    });
+
+program.command('subscribe-eebus')
+    .description('Stream EEBUS / SPINE messages from the enyo device')
+    .requiredOption('--host <host>', 'Device IP address or hostname', 'localhost')
+    .option('--port <port>', 'Device port number', `${DEFAULT_DEVICE_PORT}`)
+    .requiredOption('--token <token>', 'Debug token from the enyo device')
+    .option('--json', 'Emit raw JSON per message (table-renderer friendly)')
+    .option('--full-ski', 'Print full SKI instead of abbreviated form')
+    .action(async (options: SubscribeEebusOptions) => {
+        try {
+            await subscribeEebusCommand(options);
+        } catch (error) {
+            if (error instanceof CLIError) {
+                console.error(`❌ ${error.message}`);
+                process.exit(error.exitCode);
+            }
+            handleError(error, 'subscribing to EEBUS messages');
         }
     });
 
