@@ -10,5 +10,5 @@
     "useDefineForClassFields": true
   },
   "include": ["src"],
-  "exclude": ["src/templates"]
+  "exclude": ["src/templates", "src/**/*.test.ts"]
 }
