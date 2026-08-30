@@ -15,8 +15,20 @@ import {
     uploadFirmwareFiles,
     validateFirmwareDeclaration
 } from '../utils/firmware.js';
+import {
+    preparePublicFiles,
+    toPublishedFiles,
+    uploadPublicFiles,
+    validatePublicFilesDeclaration
+} from '../utils/public-files.js';
 import {DEFAULT_REGISTRY_URL, FILE_NAMES} from '../constants/defaults.js';
-import type {CommandOptions, PreparedFirmwareFile, ReleaseNote, ReleaseResponse} from '../types';
+import type {
+    CommandOptions,
+    PreparedFirmwareFile,
+    PreparedPublicFile,
+    ReleaseNote,
+    ReleaseResponse
+} from '../types';
 import {EnergyAppPackageDefinition} from "@enyo-energy/energy-app-sdk";
 
 export const releaseCommand = async (options: CommandOptions): Promise<void> => {
@@ -87,11 +99,13 @@ const processReleaseForConfig = async (
     configFile?: string
 ): Promise<void> => {
     // Everything that can fail locally runs before the release is created, so a
-    // broken firmware declaration never reaches the registry.
+    // broken firmware or file declaration never reaches the registry.
     validateFirmwareDeclaration(config);
+    validatePublicFilesDeclaration(config);
 
     const packageRoot = configFile ? path.dirname(path.resolve(configFile)) : process.cwd();
     const firmware = await prepareFirmwareFiles(config, packageRoot);
+    const files = await preparePublicFiles(config, packageRoot);
 
     if (firmware.length > 0) {
         console.log(
@@ -99,6 +113,13 @@ const processReleaseForConfig = async (
         );
         for (const file of firmware) {
             console.log(`   • ${file.fileId} → ${file.fileName} (sha256 ${file.sha256.substring(0, 12)}…)`);
+        }
+    }
+
+    if (files.length > 0) {
+        console.log(`🖼️ ${files.length} public file(s) declared`);
+        for (const file of files) {
+            console.log(`   • ${file.name} → ${file.fileName} (sha256 ${file.sha256.substring(0, 12)}…)`);
         }
     }
 
@@ -113,7 +134,7 @@ const processReleaseForConfig = async (
     }
 
     console.log(`🚀 Creating release on ${registryUrl} using SDK Version ${config.sdkVersion}`);
-    await createRelease(bundlePath, config, apiKey, registryUrl, channel, firmware, releaseNote);
+    await createRelease(bundlePath, config, apiKey, registryUrl, channel, firmware, files, releaseNote);
 };
 
 const calculateFileChecksum = (filePath: string): string => {
@@ -147,11 +168,11 @@ const getLogoChecksum = (config: EnergyAppPackageDefinition): string | undefined
 /**
  * Build the `create-release` request body.
  *
- * The declared `firmware` array is replaced with its published form — local
- * paths dropped, `sha256`/`sizeBytes`/`fileName`/`mimeType` added — **in the
- * declared order**. Under `firmwareMode: 'latest'` the runtime offers the last
- * declared entry that applies to a device's model, so the order is semantic and
- * is never sorted or reshuffled. `firmwareMode` is carried through unchanged,
+ * The declared `firmware` and `files` arrays are replaced with their published
+ * form — local paths dropped, `sha256`/`sizeBytes`/`fileName`/`mimeType` added —
+ * **in the declared order**. Under `firmwareMode: 'latest'` the runtime offers
+ * the last declared entry that applies to a device's model, so the order is
+ * semantic and is never sorted or reshuffled. `firmwareMode` is carried through unchanged,
  * defaulting to `'latest'`.
  *
  * Exported for testing.
@@ -161,6 +182,7 @@ export const buildCreateReleasePayload = (
     uploadLogo: string | undefined,
     channel: 'production' | 'staging',
     firmware: PreparedFirmwareFile[],
+    files: PreparedPublicFile[] = [],
     releaseNote?: ReleaseNote[]
 ): Record<string, unknown> => {
     return {
@@ -173,7 +195,8 @@ export const buildCreateReleasePayload = (
                 firmware: toPublishedFirmware(firmware),
                 firmwareMode: config.firmwareMode ?? DEFAULT_FIRMWARE_MODE
             }
-            : {})
+            : {}),
+        ...(files.length > 0 ? {files: toPublishedFiles(files)} : {})
     };
 };
 
@@ -184,6 +207,7 @@ const createRelease = async (
     registry: string,
     channel: 'production' | 'staging',
     firmware: PreparedFirmwareFile[],
+    files: PreparedPublicFile[],
     releaseNote?: ReleaseNote[]
 ): Promise<void> => {
     // Read SDK version from package.json
@@ -197,7 +221,7 @@ const createRelease = async (
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${apiKey}`,
         },
-        body: JSON.stringify(buildCreateReleasePayload(config, uploadLogo, channel, firmware, releaseNote))
+        body: JSON.stringify(buildCreateReleasePayload(config, uploadLogo, channel, firmware, files, releaseNote))
     });
 
     if (!response.ok) {
@@ -214,6 +238,12 @@ const createRelease = async (
     // published. A package version pointing at a half-uploaded registry is
     // worse than a failed release, and nothing below finishes the release.
     await uploadFirmwareFiles(firmware, data.firmwareUploads);
+
+    // Public files are load-bearing, not decorative: an onboarding guide refers
+    // to them by name, so a version published without its assets shows an
+    // installer a broken image mid-job. Fails the release like firmware does,
+    // unlike the logo below.
+    await uploadPublicFiles(files, data.fileUploads);
 
     // Upload logo if logoUrl is provided
     if (data.logoUploadUrl && config.logo) {

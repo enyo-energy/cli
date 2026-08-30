@@ -1,6 +1,7 @@
 import type {
     EnergyAppPackageFirmwareFile,
     EnergyAppPackagePermission,
+    EnergyAppPackagePublicFile,
     EnergyAppPermissionType
 } from '@enyo-energy/energy-app-sdk';
 
@@ -40,6 +41,12 @@ export interface ReleaseResponse {
      * URLs only for the blobs it does not already hold.
      */
     firmwareUploads?: FirmwareUploadTarget[];
+    /**
+     * One entry per declared public file, following the same handshake as
+     * {@link firmwareUploads}: the CLI sends the content hashes, the backend
+     * answers with signed PUT URLs only for the blobs it does not already hold.
+     */
+    fileUploads?: PublicFileUploadTarget[];
     versionNumber: number;
 }
 
@@ -85,6 +92,55 @@ export interface PreparedFirmwareFile {
     mimeType: string;
     /** The form this entry takes in the published definition. */
     published: PublishedFirmwareFile;
+}
+
+/** The backend's answer for one declared public file. */
+export interface PublicFileUploadTarget {
+    /** The `name` from the package definition. */
+    name: string;
+    /** Lowercase hex SHA-256 the URL was issued for. */
+    sha256: string;
+    /**
+     * Signed PUT URL for the blob. Absent when the registry already holds this
+     * sha256 for the package — an asset that did not change between releases is
+     * referenced rather than re-uploaded.
+     */
+    uploadUrl?: string;
+}
+
+/**
+ * A public file as it is published in the package definition: the local `path`
+ * removed, the content metadata the registry and the renderer need added.
+ *
+ * The published entry deliberately keeps its `name`: references elsewhere in
+ * the package (an onboarding v2 image block's `file`) are resolved by name, not
+ * by URL, so the name has to survive into the published definition.
+ */
+export interface PublishedPublicFile extends Omit<EnergyAppPackagePublicFile, 'path'> {
+    /** Lowercase hex SHA-256 of the file content. */
+    sha256: string;
+    /** Size of the file in bytes. */
+    sizeBytes: number;
+    /** Basename of the declared local path, e.g. `dip-switches.png`. */
+    fileName: string;
+    /** IANA MIME type; the declared `mimeType` wins over the extension. */
+    mimeType: string;
+}
+
+/** A declared public file resolved on disk, fingerprinted and ready to upload. */
+export interface PreparedPublicFile {
+    /** The `name` from the package definition. */
+    name: string;
+    /** The `path` exactly as declared in the package definition. */
+    declaredPath: string;
+    /** The declared path resolved against the package root. */
+    absolutePath: string;
+    sha256: string;
+    sizeBytes: number;
+    fileName: string;
+    mimeType: string;
+    /** The form this entry takes in the published definition. */
+    published: PublishedPublicFile;
 }
 
 export interface ReleaseNote {

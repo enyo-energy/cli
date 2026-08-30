@@ -1,7 +1,6 @@
 import fs from 'fs';
 import https from 'https';
 import path from 'path';
-import crypto from 'crypto';
 import {validateFirmwareRegistry} from '@enyo-energy/energy-app-sdk';
 import type {
     EnergyAppPackageDefinition,
@@ -10,6 +9,7 @@ import type {
 } from '@enyo-energy/energy-app-sdk';
 import {CLIError} from './error-handler.js';
 import {getContentTypeFromFile} from './mime.js';
+import {hashFile} from './checksum.js';
 import type {FirmwareUploadTarget, PreparedFirmwareFile, PublishedFirmwareFile} from '../types';
 
 /**
@@ -65,17 +65,6 @@ const resolveFirmwarePath = (packageRoot: string, fileId: string, declaredPath: 
     }
 
     return resolved;
-};
-
-/** Stream the file through SHA-256 so tens-of-MB images never sit in memory whole. */
-const hashFile = (filePath: string): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const hash = crypto.createHash('sha256');
-        const stream = fs.createReadStream(filePath);
-        stream.on('error', reject);
-        stream.on('data', (chunk) => hash.update(chunk));
-        stream.on('end', () => resolve(hash.digest('hex')));
-    });
 };
 
 /**
