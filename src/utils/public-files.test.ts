@@ -216,10 +216,14 @@ describe('uploadPublicFiles', () => {
         await assert.doesNotReject(() => uploadPublicFiles(files, targets));
     });
 
-    test('aborts when the registry returns no targets at all', async () => {
-        await assert.rejects(
-            () => uploadPublicFiles([prepared('a', 'a'.repeat(64))], undefined),
-            CLIError
+    test('warns and skips when the registry returns no targets at all', async () => {
+        // absolutePath points at a file that does not exist: if the
+        // implementation tried to upload rather than skip, this would throw.
+        await assert.doesNotReject(
+            () => uploadPublicFiles([prepared('a', 'a'.repeat(64))], undefined)
+        );
+        await assert.doesNotReject(
+            () => uploadPublicFiles([prepared('a', 'a'.repeat(64))], [])
         );
     });
 

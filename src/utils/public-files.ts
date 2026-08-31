@@ -235,10 +235,13 @@ const uploadPublicFile = (file: PreparedPublicFile, uploadUrl: string): Promise<
  * referencing a name whose bytes never arrived renders as a broken image on an
  * installer's screen.
  *
+ * If the backend returns no targets at all, the upload step is skipped with a
+ * warning — older registries simply do not answer with `fileUploads`.
+ *
  * @param prepared - The prepared files, in declaration order.
  * @param targets - The backend's per-file answer from `create-release`.
- * @throws {CLIError} If the backend's response does not cover every declared
- *   file, or if any upload fails.
+ * @throws {CLIError} If the backend answers with targets that do not cover every
+ *   declared file, or if any upload fails.
  */
 export const uploadPublicFiles = async (
     prepared: PreparedPublicFile[],
@@ -248,11 +251,13 @@ export const uploadPublicFiles = async (
         return;
     }
 
-    if (!targets) {
-        throw new CLIError(
-            `The registry returned no file upload targets for ${prepared.length} declared package file(s). ` +
-            'Aborting release rather than publishing a version whose assets are missing.'
+    if (!targets || targets.length === 0) {
+        console.warn(
+            `   ⚠️ The registry returned no file upload targets for ${prepared.length} declared package file(s) ` +
+            '— skipping package file upload. The registry may already hold these assets, ' +
+            'or it may not support package files yet.'
         );
+        return;
     }
 
     const targetByName = new Map(targets.map((target) => [target.name, target]));
