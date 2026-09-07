@@ -159,6 +159,17 @@ export interface CommandOptions {
     releaseNotes?: string;
 }
 
+export interface OnboardingSimOptions extends CommandOptions {
+    /** Bundle entry point, when it is not the usual `dist/index.js`. */
+    entry?: string;
+    /** Run `npx rsbuild build` before loading the app. */
+    build?: boolean;
+    /** Let the app reach the network instead of blocking `useFetch()`. */
+    allowNetwork?: boolean;
+    /** Print the guides the app returned and exit, without serving the UI. */
+    print?: boolean;
+}
+
 export interface SubscribeLogsOptions extends CommandOptions {
     packageName?: string;
 }

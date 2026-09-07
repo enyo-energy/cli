@@ -1,5 +1,9 @@
 .idea
 node_modules
 dist
+# The onboarding simulator's fixture app ships a built bundle on purpose: it is
+# what the simulator loads, and its tests need it in a fresh clone.
+!example/onboarding-sim-fixture/dist/
+!example/onboarding-sim-fixture/dist/**
 test
 *.pdf

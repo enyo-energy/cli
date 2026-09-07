@@ -10,9 +10,10 @@ import {infoCommand} from './commands/info.js';
 import {triggerDeviceScanCommand} from './commands/trigger-device-scan.js';
 import {CLIError, handleError} from './utils/error-handler.js';
 import {coreUpdateCommand} from './commands/core-update.js';
-import type {CommandOptions, CoreUpdateOptions, SecretCommandOptions, SubscribeEebusOptions, SubscribeLogsOptions} from './types';
+import type {CommandOptions, CoreUpdateOptions, OnboardingSimOptions, SecretCommandOptions, SubscribeEebusOptions, SubscribeLogsOptions} from './types';
 import {DEFAULT_DEVICE_PORT, DEFAULT_REGISTRY_URL} from "./constants/defaults.js";
 import {secretCommand} from './commands/secret.js';
+import {onboardingSimCommand} from './commands/onboarding-sim.js';
 
 program.version('0.0.3', '-v, --version', 'output the current version');
 
@@ -45,6 +46,26 @@ program.command('install')
                 process.exit(error.exitCode);
             }
             handleError(error, 'installing package');
+        }
+    });
+
+program.command('onboarding-sim')
+    .description('Run the app against a mock SDK and walk its onboarding v2 guides in the browser')
+    .option('--port <port>', 'Port for the simulator UI', '4600')
+    .option('-f, --file <file>', 'Specific config file to read (if not set, searches for *.package.ts files)')
+    .option('--entry <file>', 'Bundle entry point (defaults to dist/index.js)')
+    .option('--build', 'Run "npx rsbuild build" before loading the app')
+    .option('--allow-network', 'Let the app use the real network instead of blocking useFetch()')
+    .option('--print', 'Print the guides the app returned and exit')
+    .action(async (options: OnboardingSimOptions) => {
+        try {
+            await onboardingSimCommand(options);
+        } catch (error) {
+            if (error instanceof CLIError) {
+                console.error(`❌ ${error.message}`);
+                process.exit(error.exitCode);
+            }
+            handleError(error, 'running the onboarding simulator');
         }
     });
 

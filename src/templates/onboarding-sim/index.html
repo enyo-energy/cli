@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>enyo onboarding v2 simulator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com"/>
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap"
+        rel="stylesheet"/>
+    <style>
+        /*
+         * The enyo app's look, borrowed from connect-core/frontend: Inter, the
+         * #F5F6FC page with white cards on it, a 0.75rem radius, gray-200
+         * borders and near-black primary buttons. Same tokens, plain CSS —
+         * a dev tool does not need the frontend's build.
+         */
+        :root {
+            --bg: #F5F6FC;
+            --panel: #FFFFFF;
+            --panel-2: #FFFFFF;
+            --line: hsl(210 20% 92%);
+            --line-strong: hsl(220 16% 82%);
+            --text: #14141A;
+            --muted: hsl(220 12% 52%);
+            --accent: #0D61FD;
+            --primary: #14141A;
+            --primary-hover: #2C2C3A;
+            --ok: #16A249;
+            --warn: hsl(38 92% 50%);
+            --err: hsl(0 84% 60%);
+            --radius: 0.75rem;
+            --max-container-width: 700px;
+            font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 14px;
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 20px;
+            border-bottom: 1px solid var(--line);
+            background: var(--panel);
+            position: sticky;
+            top: 0;
+            z-index: 2;
+        }
+
+        header h1 { font-size: 14px; margin: 0; font-weight: 700; }
+        header .spacer { flex: 1; }
+
+        main {
+            display: grid;
+            grid-template-columns: 300px minmax(0, 1fr) 360px;
+            height: calc(100vh - 53px);
+        }
+
+        section { overflow-y: auto; padding: 20px; }
+        section + section { border-left: 1px solid var(--line); }
+        /* The app's arrangement: white surfaces around a grey page, with the
+           step itself on white cards standing on that page. */
+        #library, #log-panel { background: var(--panel); }
+        /* The app reads at 700px however wide the window is. */
+        #stage > * { max-width: var(--max-container-width); }
+        .step {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            padding: 20px;
+        }
+
+        h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+        h3 { margin: 0 0 10px; font-size: 20px; font-weight: 700; }
+
+        .variant { margin-bottom: 20px; }
+        .variant > .name { font-weight: 600; margin-bottom: 8px; font-size: 13px; }
+        .guide {
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            padding: 12px;
+            margin-bottom: 8px;
+            background: var(--panel);
+            cursor: pointer;
+            transition: border-color .15s, box-shadow .15s;
+        }
+        .guide:hover { border-color: var(--line-strong); box-shadow: 0 1px 3px rgb(20 20 26 / .06); }
+        .guide .title { font-weight: 600; margin-bottom: 4px; }
+        .empty { color: var(--muted); padding: 6px 0; }
+
+        .badge {
+            display: inline-block;
+            border-radius: 999px;
+            padding: 2px 9px;
+            font-size: 11px;
+            font-weight: 500;
+            background: hsl(220 20% 97%);
+            border: 1px solid var(--line);
+            color: hsl(220 10% 42%);
+            margin-right: 4px;
+        }
+        .badge.ok { color: var(--ok); border-color: var(--ok); background: #F1FBF5; }
+        .badge.warn { color: hsl(38 92% 35%); border-color: var(--warn); background: #FDF6E7; }
+        .badge.err { color: var(--err); border-color: var(--err); background: #FEF2F2; }
+
+        button {
+            background: var(--panel);
+            color: hsl(220 12% 32%);
+            border: 1px solid var(--line);
+            border-radius: 0.5rem;
+            padding: 8px 14px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 600;
+            transition: background-color .15s, border-color .15s;
+        }
+        button:hover:not(:disabled) { border-color: var(--line-strong); background: hsl(220 20% 97%); }
+        button:disabled { color: hsl(220 14% 67%); cursor: not-allowed; }
+        button.primary { background: var(--primary); border-color: var(--primary); color: #FFFFFF; font-weight: 700; }
+        button.primary:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
+        button.primary:disabled { background: hsl(220 10% 42%); border-color: hsl(220 10% 42%); color: hsl(210 20% 92%); }
+        button.ghost { background: transparent; border-color: transparent; color: hsl(220 14% 22%); font-weight: 500; }
+        button.ghost:hover:not(:disabled) { background: hsl(210 20% 92%); border-color: transparent; }
+
+        input, select {
+            background: var(--panel);
+            border: 1px solid var(--line-strong);
+            border-radius: 0.5rem;
+            color: var(--text);
+            padding: 9px 11px;
+            font-family: inherit;
+            font-size: 14px;
+            width: 100%;
+        }
+        input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+        input.invalid { border-color: var(--err); }
+
+        .block { margin-bottom: 16px; }
+        .block p { margin: 0 0 8px; line-height: 1.6; }
+        .block img { max-width: 100%; border-radius: var(--radius); border: 1px solid var(--line); }
+        .hint { border-left: 3px solid var(--muted); padding: 10px 14px; border-radius: 0.5rem; background: hsl(220 20% 97%); }
+        .hint.important { border-color: var(--err); background: #FEF2F2; }
+        .hint.warning { border-color: var(--warn); background: #FDF6E7; }
+        .hint.info { border-color: var(--accent); background: #EEF4FF; }
+
+        .card {
+            border-top: 1px solid var(--line);
+            padding-top: 14px;
+            margin-top: 14px;
+        }
+        .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .stack { display: flex; flex-direction: column; gap: 8px; }
+        .muted { color: var(--muted); }
+        a { color: var(--accent); }
+        .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+
+        #log {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 11px;
+            line-height: 1.5;
+        }
+        #log div { padding: 3px 0; border-bottom: 1px solid var(--line); white-space: pre-wrap; word-break: break-word; }
+        #log .app { color: hsl(220 14% 22%); }
+        #log .sdk { color: var(--muted); }
+        #log .sim { color: hsl(38 92% 35%); }
+        #log .error { color: var(--err); }
+
+        .stepper { color: var(--muted); font-size: 12px; margin-bottom: 14px; }
+        .terminal { border: 1px solid var(--line); border-left-width: 3px; border-radius: var(--radius); padding: 16px; background: var(--panel); }
+        .terminal.success { border-left-color: var(--ok); }
+        .terminal.support { border-left-color: var(--err); }
+        .terminal.pause { border-left-color: var(--warn); }
+        .terminal.start-variant { border-left-color: var(--accent); }
+        .field { margin-bottom: 12px; }
+        .field label { display: block; font-size: 12px; color: hsl(220 12% 32%); font-weight: 500; margin-bottom: 5px; }
+        details summary { cursor: pointer; color: var(--muted); }
+    </style>
+</head>
+<body>
+<header>
+    <h1 id="package-name">enyo onboarding v2 simulator</h1>
+    <span id="app-badges"></span>
+    <span class="spacer"></span>
+    <label class="muted" for="language">Language</label>
+    <select id="language" style="width: auto">
+        <option value="de">de</option>
+        <option value="en">en</option>
+    </select>
+    <button id="reload">Reload app</button>
+</header>
+
+<main>
+    <section id="library">
+        <h2>Guides by start variant</h2>
+        <div id="variants"></div>
+        <h2 style="margin-top:18px">Answer</h2>
+        <div id="answer-info" class="muted"></div>
+    </section>
+
+    <section id="stage">
+        <div class="empty">Pick a guide on the left to start a run.</div>
+    </section>
+
+    <section id="log-panel">
+        <h2>Run</h2>
+        <div id="run-info" class="muted">No run.</div>
+        <h2 style="margin-top:16px">App &amp; SDK log</h2>
+        <div id="log"></div>
+    </section>
+</main>
+
+<script>
+    const state = {app: null, view: null, language: localStorage.getItem('enyo.sim.lang') || 'de'};
+
+    const api = async (path, options) => {
+        const response = await fetch(path, {
+            headers: {'Content-Type': 'application/json'},
+            ...options,
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(body.error || response.statusText);
+        }
+        return body;
+    };
+
+    /** Translated content → the selected language, falling back to whatever exists. */
+    const text = entries => {
+        if (!Array.isArray(entries) || entries.length === 0) return '';
+        const match = entries.find(entry => entry.language === state.language);
+        return (match || entries[0]).value || '';
+    };
+
+    const el = (tag, props = {}, children = []) => {
+        const node = document.createElement(tag);
+        Object.entries(props).forEach(([key, value]) => {
+            if (key === 'class') node.className = value;
+            else if (key === 'text') node.textContent = value;
+            else if (key.startsWith('on')) node.addEventListener(key.slice(2).toLowerCase(), value);
+            else if (value !== undefined && value !== null) node.setAttribute(key, value);
+        });
+        (Array.isArray(children) ? children : [children]).filter(Boolean).forEach(child => node.appendChild(child));
+        return node;
+    };
+
+    // ---- library ----------------------------------------------------------
+
+    const renderLibrary = () => {
+        const container = document.getElementById('variants');
+        container.replaceChildren();
+
+        state.app.variants.forEach(entry => {
+            const box = el('div', {class: 'variant'}, [el('div', {class: 'name', text: entry.variant})]);
+            if (entry.guides.length === 0) {
+                box.appendChild(el('div', {class: 'empty', text: 'The app ships no guide for this variant.'}));
+            }
+            entry.guides.forEach(guide => {
+                const validation = guide.validation || {ok: true, errors: [], warnings: []};
+                box.appendChild(el('div', {
+                    class: 'guide',
+                    onclick: () => startRun(guide.index),
+                }, [
+                    el('div', {class: 'title', text: text(guide.title) || guide.name}),
+                    el('div', {class: 'mono muted', text: guide.name}),
+                    el('div', {style: 'margin-top:6px'}, [
+                        el('span', {class: 'badge', text: guide.stepCount + (guide.stepCount === 1 ? ' step' : ' steps')}),
+                        guide.requiresNetworkScan ? el('span', {class: 'badge', text: 'scan first'}) : null,
+                        guide.applianceId ? el('span', {class: 'badge', text: 'appliance ' + guide.applianceId}) : null,
+                        validation.errors.length
+                            ? el('span', {class: 'badge err', text: validation.errors.length + ' errors'})
+                            : null,
+                        validation.warnings.length
+                            ? el('span', {class: 'badge warn', text: validation.warnings.length + ' warnings'})
+                            : null,
+                    ]),
+                    validation.errors.length || validation.warnings.length
+                        ? el('details', {style: 'margin-top:6px'}, [
+                            el('summary', {text: 'Validation'}),
+                            el('div', {class: 'mono', text: [...validation.errors, ...validation.warnings].join('\n')}),
+                        ])
+                        : null,
+                ]));
+            });
+            container.appendChild(box);
+        });
+
+        const answerLabels = {
+            guides: 'The app returned its guides.',
+            empty: 'The app returned an EMPTY array — on a device that retires every guide it had cached. Return null instead when you mean "not answering right now".',
+            null: 'The app answered null — the host would keep the guides it already cached.',
+            timeout: 'The app did not answer in time; the host would keep its cached guides.',
+            rejected: 'The app\'s handler rejected; the host treats that as null.',
+            'no-handler': 'The app registered no guides handler, so it ships no v2 onboarding.',
+        };
+        const validation = state.app.validation;
+        document.getElementById('answer-info').replaceChildren(
+            el('div', {text: answerLabels[state.app.answer] || state.app.answer}),
+            state.app.detail ? el('div', {class: 'mono', style: 'margin-top:6px', text: state.app.detail}) : el('span'),
+            validation.errors.length || validation.warnings.length
+                ? el('div', {class: 'mono', style: 'margin-top:8px', text: [...validation.errors, ...validation.warnings].join('\n')})
+                : el('span'),
+        );
+
+        document.getElementById('package-name').textContent = state.app.packageName + ' — onboarding v2 simulator';
+        document.getElementById('app-badges').replaceChildren(
+            el('span', {class: 'badge ' + (state.app.handlers.guides ? 'ok' : 'err'), text: 'guides handler'}),
+            el('span', {class: 'badge ' + (state.app.handlers.dynamic ? 'ok' : ''), text: 'dynamic handler'}),
+            el('span', {class: 'badge ' + (state.app.handlers.additionalSetup ? 'ok' : ''), text: 'setup handler'}),
+        );
+    };
+
+    // ---- blocks -----------------------------------------------------------
+
+    const answer = (source, label) =>
+        api(`/api/runs/${state.view.runId}/answer`, {
+            method: 'POST',
+            body: JSON.stringify({source, label}),
+        }).then(showView);
+
+    const renderBlock = (block, view) => {
+        const isDecision = block.id === view.decisionBlockId;
+        switch (block.type) {
+            case 'headline':
+                return el('div', {class: 'block'}, el('h3', {text: text(block.text)}));
+            case 'text':
+                return el('div', {class: 'block'}, el('p', {text: text(block.text)}));
+            case 'bullets':
+                return el('div', {class: 'block'}, el('ul', {},
+                    block.items.map(item => el('li', {text: text(item)}))));
+            case 'image':
+                return el('div', {class: 'block'}, [
+                    el('img', {src: block.url || `/api/files/${encodeURIComponent(block.file || '')}`, alt: text(block.caption)}),
+                    block.caption ? el('div', {class: 'muted', text: text(block.caption)}) : null,
+                ]);
+            case 'hint':
+                return el('div', {class: 'block'}, el('div', {class: 'hint ' + block.variant, text: text(block.text)}));
+            case 'link':
+                return el('div', {class: 'block card'}, [
+                    el('div', {text: text(block.label)}),
+                    block.description ? el('div', {class: 'muted', text: text(block.description)}) : null,
+                    el('div', {class: 'mono', style: 'margin-top:6px'}, el('a', {href: block.url, target: '_blank', text: block.url})),
+                    block.copyable
+                        ? el('button', {class: 'ghost', style: 'margin-top:6px', onclick: () => navigator.clipboard.writeText(block.url)}, document.createTextNode('Copy'))
+                        : null,
+                ]);
+            case 'dynamic': {
+                const resolution = view.dynamic[block.id] || {};
+                return el('div', {class: 'block card'}, [
+                    el('div', {class: 'muted', text: 'dynamic · ' + block.kind}),
+                    el('div', {class: 'mono', style: 'margin-top:4px', text: resolution.value ?? '— not resolved —'}),
+                    el('div', {style: 'margin-top:6px'}, [
+                        el('span', {
+                            class: 'badge ' + (resolution.source === 'app' ? 'ok' : resolution.source === 'host' ? '' : 'warn'),
+                            text: resolution.source === 'host' ? 'resolved by the host' : (resolution.source || 'pending'),
+                        }),
+                    ]),
+                    resolution.note ? el('div', {class: 'muted', style: 'margin-top:4px', text: resolution.note}) : null,
+                    resolution.errors ? el('div', {class: 'mono', style: 'color:var(--err)', text: resolution.errors.join('\n')}) : null,
+                ]);
+            }
+            case 'choice':
+                return el('div', {class: 'block'}, [
+                    block.prompt ? el('p', {text: text(block.prompt)}) : null,
+                    el('div', {class: block.layout === 'list' ? 'stack' : 'row'},
+                        block.options.map(option => el('button', {
+                            class: isDecision ? '' : 'ghost',
+                            disabled: isDecision ? null : 'disabled',
+                            onclick: () => answer({kind: 'choice', blockId: block.id, optionId: option.id}, text(option.label)),
+                        }, document.createTextNode(text(option.label))))),
+                ]);
+            case 'action':
+                return el('div', {class: 'block card'}, [
+                    el('div', {class: 'muted', text: 'action · ' + block.action + (block.deviceSelection ? ' · ' + block.deviceSelection : '')}),
+                    el('div', {style: 'margin:6px 0', text: text(block.label)}),
+                    el('div', {class: 'muted', style: 'margin-bottom:6px', text: 'No hardware here — pick the outcome you want to walk.'}),
+                    el('div', {class: 'row'}, block.outcomes.map(outcome => el('button', {
+                        class: isDecision && outcome.id === view.suggestedHandleId ? 'primary' : 'ghost',
+                        disabled: isDecision ? null : 'disabled',
+                        onclick: () => answer({kind: 'outcome', blockId: block.id, outcomeId: outcome.id}, outcome.value),
+                    }, document.createTextNode(text(outcome.label) + ' (' + outcome.value + ')')))),
+                ]);
+            case 'input': {
+                const input = el('input', {
+                    value: view.inputs[block.id] || '',
+                    placeholder: text(block.placeholder),
+                    disabled: isDecision ? null : 'disabled',
+                });
+                const submit = outcome => api(`/api/runs/${state.view.runId}/input`, {
+                    method: 'POST',
+                    body: JSON.stringify({blockId: block.id, value: input.value, outcomeId: outcome.id, label: outcome.value}),
+                }).then(showView).catch(error => {
+                    input.classList.add('invalid');
+                    alert(error.message);
+                });
+                return el('div', {class: 'block card'}, [
+                    el('div', {class: 'field'}, [
+                        el('label', {text: text(block.label) + ' · ' + block.valueType}),
+                        input,
+                    ]),
+                    block.help ? el('div', {class: 'muted', text: text(block.help)}) : null,
+                    el('div', {class: 'muted', style: 'margin:6px 0', text: 'The device test cannot run here — pick its verdict.'}),
+                    el('div', {class: 'row'}, block.outcomes.map(outcome => el('button', {
+                        class: isDecision && outcome.id === view.suggestedHandleId ? 'primary' : 'ghost',
+                        disabled: isDecision ? null : 'disabled',
+                        onclick: () => submit(outcome),
+                    }, document.createTextNode(text(outcome.label) + ' (' + outcome.value + ')')))),
+                ]);
+            }
+            case 'auth':
+                return el('div', {class: 'block card'}, [
+                    el('div', {text: text(block.label)}),
+                    block.help ? el('div', {class: 'muted', text: text(block.help)}) : null,
+                    block.requiresWebAuthentication
+                        ? el('div', {class: 'muted', style: 'margin-top:4px', text: 'Needs a browser sign-in on a device; here it is just a button.'})
+                        : null,
+                    el('div', {class: 'row', style: 'margin-top:8px'}, [
+                        el('button', {
+                            class: isDecision ? 'primary' : 'ghost',
+                            disabled: isDecision ? null : 'disabled',
+                            onclick: () => answer({kind: 'outcome', blockId: block.id, outcomeId: block.outcome.id}, block.outcome.id),
+                        }, document.createTextNode(text(block.outcome.label))),
+                    ]),
+                ]);
+            case 'additional-setup': {
+                const inputs = new Map();
+                const resolution = view.setups[block.id];
+                const fields = (block.fields || []).map(field => {
+                    const control = field.type === 'select'
+                        ? el('select', {}, (field.options || []).map(option => el('option', {value: option.value, text: text(option.label)})))
+                        : el('input', {type: field.type === 'password' ? 'password' : 'text', placeholder: text(field.placeholder)});
+                    inputs.set(field.name, control);
+                    return el('div', {class: 'field'}, [
+                        el('label', {text: text(field.label) + (field.required ? ' *' : '')}),
+                        control,
+                        field.help ? el('div', {class: 'muted', text: text(field.help)}) : null,
+                    ]);
+                });
+
+                const run = () => api(`/api/runs/${state.view.runId}/setup`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        blockId: block.id,
+                        values: [...inputs.entries()].map(([name, control]) => ({name, value: control.value})),
+                    }),
+                }).then(body => showView(body.view));
+
+                return el('div', {class: 'block card'}, [
+                    el('div', {class: 'muted', text: 'additional-setup · ' + block.setupKey}),
+                    el('p', {text: text(block.description)}),
+                    ...fields,
+                    el('div', {class: 'row'}, [
+                        el('button', {
+                            class: isDecision ? 'primary' : 'ghost',
+                            disabled: isDecision ? null : 'disabled',
+                            onclick: run,
+                        }, document.createTextNode(text(block.cta))),
+                        block.skip
+                            ? el('button', {
+                                class: 'ghost',
+                                disabled: isDecision ? null : 'disabled',
+                                onclick: () => answer({kind: 'skip', blockId: block.id, skipId: block.skip.id}, block.skip.id),
+                            }, document.createTextNode(text(block.skip.label)))
+                            : null,
+                    ]),
+                    resolution
+                        ? el('div', {style: 'margin-top:8px'}, [
+                            el('span', {
+                                class: 'badge ' + (resolution.fellBackToFailed ? 'err' : 'ok'),
+                                text: 'verdict: ' + (resolution.rawOutcome || 'failed'),
+                            }),
+                            resolution.note ? el('div', {class: 'muted', text: resolution.note}) : null,
+                            resolution.message ? el('div', {text: text(resolution.message)}) : null,
+                        ])
+                        : null,
+                ]);
+            }
+            default:
+                return el('div', {class: 'block mono muted', text: 'Unsupported block type: ' + block.type});
+        }
+    };
+
+    // ---- stage ------------------------------------------------------------
+
+    const startRun = async (guideIndex, context) => {
+        showView(await api('/api/runs', {method: 'POST', body: JSON.stringify({guideIndex, context})}));
+    };
+
+    const showView = view => {
+        state.view = view;
+        const stage = document.getElementById('stage');
+        stage.replaceChildren();
+
+        const header = el('div', {class: 'row', style: 'margin-bottom:12px'}, [
+            el('button', {class: 'ghost', disabled: view.canGoBack ? null : 'disabled', onclick: () => api(`/api/runs/${view.runId}/back`, {method: 'POST'}).then(showView)}, document.createTextNode('← Back')),
+            el('button', {class: 'ghost', onclick: () => api(`/api/runs/${view.runId}/reset`, {method: 'POST'}).then(showView)}, document.createTextNode('Restart')),
+            el('span', {class: 'badge', text: view.context.variant}),
+            view.context.networkDeviceId ? el('span', {class: 'badge', text: 'device ' + view.context.deviceIp}) : null,
+            view.context.applianceId ? el('span', {class: 'badge', text: 'appliance ' + view.context.applianceId}) : null,
+        ]);
+        stage.appendChild(header);
+        stage.appendChild(el('div', {class: 'muted', style: 'margin-bottom:10px', text: text(view.guide.title) || view.guide.name}));
+
+        if (view.status === 'terminal') {
+            stage.appendChild(renderTerminal(view));
+        } else if (!view.step) {
+            stage.appendChild(el('div', {class: 'terminal support', text: 'The run has no step to show — the guide\'s start step is missing.'}));
+        } else {
+            stage.appendChild(el('div', {
+                class: 'stepper',
+                text: `${view.step.name} · ${view.visited.length} walked · at least ${view.stepsRemaining} to go`,
+            }));
+
+            const card = el('div', {class: 'step'}, el('h3', {text: text(view.step.title)}));
+            view.step.blocks.forEach(block => card.appendChild(renderBlock(block, view)));
+            if (!view.decisionBlockId) {
+                card.appendChild(el('button', {
+                    class: 'primary',
+                    onclick: () => answer({kind: 'continue'}),
+                }, document.createTextNode('Continue')));
+            }
+            stage.appendChild(card);
+            if (view.status === 'dead-end') {
+                stage.appendChild(el('div', {class: 'terminal support', style: 'margin-top:12px', text: 'Dead end: this step has no transition for the answer given. An authoring gap — on a device the installer would be stuck here.'}));
+            }
+            if (view.status === 'loop') {
+                stage.appendChild(el('div', {class: 'terminal pause', style: 'margin-top:12px', text: 'Loop: the walk came back to a step it already visited.'}));
+            }
+        }
+
+        renderRunInfo(view);
+    };
+
+    const renderTerminal = view => {
+        const terminal = view.terminal || {};
+        const labels = {
+            success: 'Success — the run is complete.',
+            support: 'Handed to support' + (terminal.reason ? ` (${terminal.reason})` : '') + '.',
+            pause: `Paused — ${terminal.reason}` + (terminal.resumeStepName ? `, resumes at ${terminal.resumeStepName}` : '') + '.',
+            'start-variant': `Handed off to the ${terminal.variant} variant.`,
+        };
+        const box = el('div', {class: 'terminal ' + terminal.type}, [
+            el('div', {text: labels[terminal.type] || terminal.type}),
+            el('div', {class: 'muted', style: 'margin-top:6px', text: 'Walked: ' + view.visited.join(' → ')}),
+        ]);
+        if (terminal.type === 'start-variant') {
+            box.appendChild(view.handoffGuideIndex >= 0
+                ? el('button', {class: 'primary', style: 'margin-top:10px', onclick: () => startRun(view.handoffGuideIndex)}, document.createTextNode('Start that guide'))
+                : el('div', {class: 'muted', style: 'margin-top:10px', text: 'The app ships no guide for that variant, so the hand-off has nowhere to go.'}));
+        }
+        box.appendChild(el('div', {class: 'row', style: 'margin-top:10px'}, [
+            el('button', {class: 'ghost', onclick: () => api(`/api/runs/${view.runId}/reset`, {method: 'POST'}).then(showView)}, document.createTextNode('Walk it again')),
+        ]));
+        return box;
+    };
+
+    const renderRunInfo = view => {
+        document.getElementById('run-info').replaceChildren(
+            el('div', {class: 'mono', text: view.guide.name + ' · ' + view.context.variant}),
+            el('div', {class: 'stack', style: 'margin-top:8px'},
+                view.events.slice().reverse().map(event => el('div', {class: 'muted mono', text: event.message}))),
+        );
+    };
+
+    // ---- log --------------------------------------------------------------
+
+    const appendLog = event => {
+        const log = document.getElementById('log');
+        const stamp = String(event.at ?? 0).padStart(5, ' ');
+        const line = el('div', {
+            class: event.kind + (event.level === 'error' ? ' error' : ''),
+            text: `${stamp}ms ${event.kind === 'app' ? '[app]' : event.kind === 'sdk' ? '[sdk]' : '[sim]'} ${event.message}`,
+        });
+        const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+        log.appendChild(line);
+        if (atBottom) log.scrollTop = log.scrollHeight;
+    };
+
+    // ---- boot -------------------------------------------------------------
+
+    const loadApp = async () => {
+        state.app = await api('/api/app');
+        renderLibrary();
+    };
+
+    document.getElementById('language').value = state.language;
+    document.getElementById('language').addEventListener('change', event => {
+        state.language = event.target.value;
+        localStorage.setItem('enyo.sim.lang', state.language);
+        renderLibrary();
+        if (state.view) showView(state.view);
+    });
+    document.getElementById('reload').addEventListener('click', async () => {
+        await api('/api/reload', {method: 'POST'});
+        state.view = null;
+        document.getElementById('stage').replaceChildren(el('div', {class: 'empty', text: 'Reloaded. Pick a guide to start a run.'}));
+        await loadApp();
+    });
+
+    new EventSource('/api/log').onmessage = event => appendLog(JSON.parse(event.data));
+    loadApp().catch(error => {
+        document.getElementById('stage').replaceChildren(el('div', {class: 'terminal support', text: error.message}));
+    });
+</script>
+</body>
+</html>
