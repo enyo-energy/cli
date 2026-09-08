@@ -30,6 +30,12 @@ import type {EnergyAppOnboardingV2} from '@enyo-energy/energy-app-sdk/dist/packa
 import type {EnergyAppOcpp} from '@enyo-energy/energy-app-sdk/dist/packages/energy-app-ocpp';
 import type {EnergyAppNetworkDevice} from '@enyo-energy/energy-app-sdk/dist/packages/energy-app-network-device';
 import type {EnyoNetworkDeviceAccessStatus} from '@enyo-energy/energy-app-sdk/dist/types/enyo-network-device';
+import type {EnergyAppEebus} from '@enyo-energy/energy-app-sdk/dist/packages/eebus/energy-app-eebus';
+import type {EebusDeviceManagement} from '@enyo-energy/energy-app-sdk/dist/packages/eebus/eebus-device-management';
+import type {EebusIdentityService} from '@enyo-energy/energy-app-sdk/dist/packages/eebus/eebus-identity-service';
+import type {EebusFeatureCatalog} from '@enyo-energy/energy-app-sdk/dist/packages/eebus/eebus-feature-catalog';
+import type {EebusUseCaseRegistry} from '@enyo-energy/energy-app-sdk/dist/packages/eebus/eebus-use-case-registry';
+import type {EebusSpineLowLevel} from '@enyo-energy/energy-app-sdk/dist/packages/eebus/eebus-spine-low-level';
 import {SIMULATED_NETWORK_DEVICE, simulatedOcppConnectionDetails} from './simulated-world.js';
 import type {UseFetchOptions} from '@enyo-energy/energy-app-sdk/dist/types/enyo-fetch';
 
@@ -344,6 +350,88 @@ export const createMockSdk = (options: Partial<MockSdkOptions> = {}): MockSdk =>
         },
     });
 
+    /**
+     * `useEebus()` is the one package whose surface is not flat: it hands out
+     * five sub-objects rather than methods. The generic fallback would answer
+     * `devices` with a function, so an app that reaches straight through —
+     * `useEebus().devices.listenForConnectionStatusChange(...)` — dies with a
+     * TypeError before any of its onboarding code runs.
+     *
+     * Only the synchronous members are written out. Everything else is a
+     * promise on the real interface too, which is exactly what the fallback
+     * hands back.
+     */
+    const listenerId = (kind: string): string => `sim-eebus-${kind}-listener-${state.calls.length}`;
+
+    const eebusDevicesStub = emptyPackage<EebusDeviceManagement>('useEebus().devices', {
+        listenForConnectionStatusChange: listener => {
+            const id = listenerId('connection-status');
+            record('useEebus().devices.listenForConnectionStatusChange', [listener], id);
+            return id;
+        },
+        removeListener: (id: string) => {
+            record('useEebus().devices.removeListener', [id]);
+        },
+    });
+
+    const eebusIdentityStub = emptyPackage<EebusIdentityService>('useEebus().identity', {
+        onIdentityChanged: (ski, listener) => {
+            const id = listenerId('identity');
+            record('useEebus().identity.onIdentityChanged', [ski, listener], id);
+            return id;
+        },
+        removeListener: (id: string) => {
+            record('useEebus().identity.removeListener', [id]);
+        },
+    });
+
+    const eebusFeaturesStub = emptyPackage<EebusFeatureCatalog>('useEebus().features', {
+        onFeaturesChanged: (ski, listener) => {
+            const id = listenerId('features');
+            record('useEebus().features.onFeaturesChanged', [ski, listener], id);
+            return id;
+        },
+        removeListener: (id: string) => {
+            record('useEebus().features.removeListener', [id]);
+        },
+    });
+
+    const eebusSpineStub = emptyPackage<EebusSpineLowLevel>('useEebus().spine', {
+        subscribe: (ski, featureType, listener, target) => {
+            const id = listenerId('spine');
+            record('useEebus().spine.subscribe', [ski, featureType, listener, target], id);
+            return id;
+        },
+        removeListener: (id: string) => {
+            record('useEebus().spine.removeListener', [id]);
+        },
+    });
+
+    /**
+     * Every registry method is a synchronous factory for a typed use-case
+     * client, so the fallback's promise is the wrong shape everywhere here: the
+     * whole object is a proxy that hands back an empty client instead.
+     */
+    const eebusUseCasesStub = new Proxy({} as EebusUseCaseRegistry, {
+        get: (target, property) => {
+            if (typeof property === 'symbol' || property === 'then') {
+                return undefined;
+            }
+            return (...args: unknown[]) => {
+                record(`useEebus().useCases.${property}`, args);
+                return emptyPackage(`useEebus().useCases.${property}()`);
+            };
+        },
+    });
+
+    const eebusStub: EnergyAppEebus = {
+        devices: eebusDevicesStub,
+        identity: eebusIdentityStub,
+        features: eebusFeaturesStub,
+        useCases: eebusUseCasesStub,
+        spine: eebusSpineStub,
+    };
+
     /** A `use*()` accessor that is nothing but an empty package. */
     const packageAccessor = <T extends object>(name: string): (() => T) => {
         const stub = emptyPackage<T>(`${name}()`);
@@ -432,7 +520,10 @@ export const createMockSdk = (options: Partial<MockSdkOptions> = {}): MockSdk =>
         useSequenceGenerator: packageAccessor('useSequenceGenerator'),
         useModbusRtu: packageAccessor('useModbusRtu'),
         useModbusServer: packageAccessor('useModbusServer'),
-        useEebus: packageAccessor('useEebus'),
+        useEebus: () => {
+            record('useEebus', []);
+            return eebusStub;
+        },
         useMqtt: packageAccessor('useMqtt'),
         useBluetooth: packageAccessor('useBluetooth'),
         useDiagnostics: packageAccessor('useDiagnostics'),

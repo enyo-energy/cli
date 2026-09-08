@@ -109,6 +109,19 @@ describe('createMockSdk', () => {
         assert.equal(state.energyAppState, EnergyAppStateEnum.Running);
     });
 
+    it("hands out eebus' sub-packages, not functions, so a listener registers", async () => {
+        const {instance, state} = createMockSdk();
+        const eebus = instance.useEebus();
+        const id = eebus.devices.listenForConnectionStatusChange(() => {});
+        assert.equal(typeof id, 'string');
+        eebus.devices.removeListener(id);
+        assert.deepEqual(await eebus.devices.getPairedDevices(), []);
+        assert.equal(typeof eebus.useCases.lpc('ski').setLimit, 'function');
+        assert.ok(
+            state.calls.some(call => call.method === 'useEebus().devices.listenForConnectionStatusChange')
+        );
+    });
+
     it('never looks like a thenable, so awaiting a package does not hang', async () => {
         const {instance} = createMockSdk();
         const settings = await instance.useSettings();
