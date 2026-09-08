@@ -353,6 +353,36 @@
                         ? el('button', {class: 'ghost', style: 'margin-top:6px', onclick: () => navigator.clipboard.writeText(block.url)}, document.createTextNode('Copy'))
                         : null,
                 ]);
+            case 'credentials': {
+                // Passive content: values the installer transcribes into the
+                // device. No handle, so it never becomes the decision block.
+                const copyable = block.copyable !== false;
+                return el('div', {class: 'block card'}, [
+                    block.title ? el('div', {text: text(block.title)}) : null,
+                    ...(block.credentials || []).map(credential => {
+                        const value = el('div', {class: 'mono', text: credential.secret ? '\u2022'.repeat(8) : credential.value});
+                        let revealed = false;
+                        return el('div', {class: 'row', style: 'margin-top:6px'}, [
+                            el('div', {class: 'muted', text: text(credential.label)}),
+                            value,
+                            credential.secret
+                                ? el('button', {
+                                    class: 'ghost',
+                                    onclick: event => {
+                                        revealed = !revealed;
+                                        value.textContent = revealed ? credential.value : '\u2022'.repeat(8);
+                                        event.currentTarget.textContent = revealed ? 'Hide' : 'Reveal';
+                                    },
+                                }, document.createTextNode('Reveal'))
+                                : null,
+                            copyable
+                                ? el('button', {class: 'ghost', onclick: () => navigator.clipboard.writeText(credential.value)}, document.createTextNode('Copy'))
+                                : null,
+                        ]);
+                    }),
+                    block.description ? el('div', {class: 'muted', style: 'margin-top:6px', text: text(block.description)}) : null,
+                ]);
+            }
             case 'dynamic': {
                 const resolution = view.dynamic[block.id] || {};
                 return el('div', {class: 'block card'}, [
