@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import {existsSync, readFileSync} from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {program} from 'commander';
 import {initCommand} from './commands/init.js';
 import {installCommand} from './commands/install.js';
@@ -15,7 +18,16 @@ import {DEFAULT_DEVICE_PORT, DEFAULT_REGISTRY_URL} from "./constants/defaults.js
 import {secretCommand} from './commands/secret.js';
 import {onboardingSimCommand} from './commands/onboarding-sim.js';
 
-program.version('0.0.3', '-v, --version', 'output the current version');
+const cliDir = path.dirname(fileURLToPath(import.meta.url));
+const packageJsonPath = [
+    path.join(cliDir, '../package.json'),
+    path.join(cliDir, '../../package.json'),
+].find(candidate => existsSync(candidate));
+const version = packageJsonPath
+    ? (JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {version: string}).version
+    : 'unknown';
+
+program.version(version, '-v, --version', 'output the current version');
 
 program.command('init')
     .description('Create a new enyo Package')

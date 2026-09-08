@@ -1,6 +1,6 @@
 {
   "name": "@enyo-energy/cli",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "The Enyo CLI is a npm-based cli to publish and deploy your Enyo Energy Apps to our store.",
   "main": "index.js",
   "bin": {
