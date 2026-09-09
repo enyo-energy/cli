@@ -100,6 +100,8 @@ export const createSimulatorServer = (options: SimulatorServerOptions): Express 
                 guides: Boolean(app.mock.state.guidesHandler),
                 dynamic: Boolean(app.mock.state.dynamicHandler),
                 additionalSetup: Boolean(app.mock.state.additionalSetupHandler),
+                deviceSelect: Boolean(app.mock.state.deviceSelectHandler),
+                eebusDeviceSelect: Boolean(app.mock.state.eebusDeviceSelectHandler),
             },
             runActions: app.mock.state.runActions,
             variants: START_VARIANTS.map(variant => ({
@@ -203,6 +205,24 @@ export const createSimulatorServer = (options: SimulatorServerOptions): Express 
             throw new Error('blockId is required');
         }
         const resolution = await store.runAdditionalSetup(request.params.id, body.blockId, body.values ?? []);
+        response.json({resolution, view: await store.view(request.params.id)});
+    }));
+
+    /**
+     * A picker block: the installer picked a device or a peer off the list. The
+     * app's handler runs, the run is bound to what it answers with, and the
+     * block's positive outcome is the branch.
+     *
+     * The negative branches — nothing was listed, the handshake never came up —
+     * are ordinary outcome answers and go through `/answer`: there is no pick
+     * behind them and no handler to call.
+     */
+    server.post('/api/runs/:id/pick', handle(async (request, response) => {
+        const body = request.body as { blockId?: string; key?: string };
+        if (!body.blockId || !body.key) {
+            throw new Error('blockId and key are required');
+        }
+        const resolution = await store.pick(request.params.id, body.blockId, body.key);
         response.json({resolution, view: await store.view(request.params.id)});
     }));
 

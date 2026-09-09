@@ -18,7 +18,9 @@
 import {EnyoPackageChannel} from '@enyo-energy/energy-app-sdk';
 import type {
     EnyoOnboardingV2AdditionalSetupHandler,
+    EnyoOnboardingV2DeviceSelectHandler,
     EnyoOnboardingV2DynamicHandler,
+    EnyoOnboardingV2EebusDeviceSelectHandler,
     EnyoOnboardingV2GuidesHandler,
 } from '@enyo-energy/energy-app-sdk';
 // The SDK's own barrel does not re-export the host-facing interfaces — the
@@ -36,7 +38,7 @@ import type {EebusIdentityService} from '@enyo-energy/energy-app-sdk/dist/packag
 import type {EebusFeatureCatalog} from '@enyo-energy/energy-app-sdk/dist/packages/eebus/eebus-feature-catalog';
 import type {EebusUseCaseRegistry} from '@enyo-energy/energy-app-sdk/dist/packages/eebus/eebus-use-case-registry';
 import type {EebusSpineLowLevel} from '@enyo-energy/energy-app-sdk/dist/packages/eebus/eebus-spine-low-level';
-import {SIMULATED_NETWORK_DEVICE, simulatedOcppConnectionDetails} from './simulated-world.js';
+import {SIMULATED_NETWORK_DEVICES, simulatedOcppConnectionDetails} from './simulated-world.js';
 import type {UseFetchOptions} from '@enyo-energy/energy-app-sdk/dist/types/enyo-fetch';
 
 /** One recorded call from the app into the mock. */
@@ -92,6 +94,10 @@ export interface MockSdkState {
     guidesHandler?: EnyoOnboardingV2GuidesHandler;
     dynamicHandler?: EnyoOnboardingV2DynamicHandler;
     additionalSetupHandler?: EnyoOnboardingV2AdditionalSetupHandler;
+    /** Turns the devices an installer picked into appliances. */
+    deviceSelectHandler?: EnyoOnboardingV2DeviceSelectHandler;
+    /** The EEBUS counterpart — a peer is not a network device, so it is a handler of its own. */
+    eebusDeviceSelectHandler?: EnyoOnboardingV2EebusDeviceSelectHandler;
     /** The app's last `updateEnergyAppState`, if it set one. */
     energyAppState?: EnergyAppStateEnum;
     /** `completeOnboardingRun` and friends the app asked for. */
@@ -258,21 +264,20 @@ export const createMockSdk = (options: Partial<MockSdkOptions> = {}): MockSdk =>
 
     const networkDeviceStub = emptyPackage<EnergyAppNetworkDevice>('useNetworkDevices()', {
         getDevices: async (filter?: {accessStatus?: EnyoNetworkDeviceAccessStatus}) => {
-            const devices =
-                filter?.accessStatus && filter.accessStatus !== SIMULATED_NETWORK_DEVICE.accessStatus
-                    ? []
-                    : [SIMULATED_NETWORK_DEVICE];
+            const devices = filter?.accessStatus
+                ? SIMULATED_NETWORK_DEVICES.filter(device => device.accessStatus === filter.accessStatus)
+                : SIMULATED_NETWORK_DEVICES;
             record('useNetworkDevices().getDevices', [filter], devices);
             return devices;
         },
         getDevice: async (deviceId: string) => {
-            const device = deviceId === SIMULATED_NETWORK_DEVICE.id ? SIMULATED_NETWORK_DEVICE : null;
+            const device = SIMULATED_NETWORK_DEVICES.find(candidate => candidate.id === deviceId) ?? null;
             record('useNetworkDevices().getDevice', [deviceId], device);
             return device;
         },
         searchDevices: async () => {
-            record('useNetworkDevices().searchDevices', [], [SIMULATED_NETWORK_DEVICE]);
-            return [SIMULATED_NETWORK_DEVICE];
+            record('useNetworkDevices().searchDevices', [], SIMULATED_NETWORK_DEVICES);
+            return SIMULATED_NETWORK_DEVICES;
         },
         // Access is granted: a simulated run must not stall on a permission
         // dialog that only exists in the app.
@@ -325,6 +330,22 @@ export const createMockSdk = (options: Partial<MockSdkOptions> = {}): MockSdk =>
         deregisterAdditionalSetupHandler: async () => {
             record('useOnboardingV2().deregisterAdditionalSetupHandler', []);
             state.additionalSetupHandler = undefined;
+        },
+        registerDeviceSelectHandler: async (handler: EnyoOnboardingV2DeviceSelectHandler) => {
+            record('useOnboardingV2().registerDeviceSelectHandler', [handler]);
+            state.deviceSelectHandler = handler;
+        },
+        deregisterDeviceSelectHandler: async () => {
+            record('useOnboardingV2().deregisterDeviceSelectHandler', []);
+            state.deviceSelectHandler = undefined;
+        },
+        registerEebusDeviceSelectHandler: async (handler: EnyoOnboardingV2EebusDeviceSelectHandler) => {
+            record('useOnboardingV2().registerEebusDeviceSelectHandler', [handler]);
+            state.eebusDeviceSelectHandler = handler;
+        },
+        deregisterEebusDeviceSelectHandler: async () => {
+            record('useOnboardingV2().deregisterEebusDeviceSelectHandler', []);
+            state.eebusDeviceSelectHandler = undefined;
         },
         refreshOnboardingGuides: async () => {
             record('useOnboardingV2().refreshOnboardingGuides', []);

@@ -44,6 +44,12 @@ const INTERACTIVE_TYPES: EnyoOnboardingV2BlockType[] = [
     EnyoOnboardingV2BlockType.Input,
     EnyoOnboardingV2BlockType.Auth,
     EnyoOnboardingV2BlockType.AdditionalSetup,
+    // The two picker blocks own the step they sit on: each is a screen with its
+    // own outcomes, so each is the step's decision point. The guide validator
+    // rejects a second decision block beside one, which is what keeps
+    // `decisionBlock` — "the first interactive block" — unambiguous here.
+    EnyoOnboardingV2BlockType.DeviceSelect,
+    EnyoOnboardingV2BlockType.EebusDeviceSelect,
 ];
 
 export const isInteractiveBlock = (block: EnyoOnboardingV2Block): block is EnyoOnboardingV2InteractiveBlock =>

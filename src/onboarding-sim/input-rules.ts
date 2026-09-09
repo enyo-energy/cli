@@ -32,7 +32,7 @@ export const isValidInput = (valueType: EnyoOnboardingV2InputValueType, value: s
  * device-test verdicts one by one — the exact match wins — but the editor seeds
  * an input block with the plain binary pair, which is what most guides use.
  */
-export const POSITIVE_OUTCOME_VALUES = ['reachable', 'success', 'found', 'paired'];
+export const POSITIVE_OUTCOME_VALUES = ['reachable', 'success', 'found', 'paired', 'selected'];
 
 /**
  * The handle the simulator pre-selects for a block: the positive branch, because

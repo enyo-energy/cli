@@ -2,7 +2,7 @@ import {describe, it} from 'node:test';
 import assert from 'node:assert/strict';
 import {EnergyAppStateEnum} from '@enyo-energy/energy-app-sdk/dist/enyo-energy-app-sdk.js';
 import {createMockSdk} from './mock-sdk.js';
-import {SIMULATED_NETWORK_DEVICE} from './simulated-world.js';
+import {SIMULATED_NETWORK_DEVICE, SIMULATED_NETWORK_DEVICES} from './simulated-world.js';
 
 describe('createMockSdk', () => {
     it('answers every unstubbed package method with an empty list', async () => {
@@ -31,12 +31,15 @@ describe('createMockSdk', () => {
         assert.equal(instance.useOcpp().getChargePoint('cp-1'), undefined);
     });
 
-    it('serves one device on the simulated LAN, findable by the id the host hands out', async () => {
+    it('serves the simulated LAN, findable by the ids the host hands out', async () => {
         const {instance} = createMockSdk();
         const devices = await instance.useNetworkDevices().getDevices();
 
-        assert.equal(devices.length, 1);
-        assert.match(devices[0].ipAddress, /^\d+\.\d+\.\d+\.\d+$/);
+        // More than one, because a device-select block is a screen for telling
+        // one entry from another — a LAN of one can only demonstrate the skip.
+        assert.equal(devices.length, SIMULATED_NETWORK_DEVICES.length);
+        assert.ok(devices.length > 1);
+        devices.forEach(device => assert.match(device.ipAddress, /^\d+\.\d+\.\d+\.\d+$/));
         assert.equal(
             await instance.useNetworkDevices().getDevice(SIMULATED_NETWORK_DEVICE.id),
             SIMULATED_NETWORK_DEVICE
@@ -46,7 +49,10 @@ describe('createMockSdk', () => {
 
     it('filters the device list by access status the way the real one does', async () => {
         const {instance} = createMockSdk();
-        assert.equal((await instance.useNetworkDevices().getDevices({accessStatus: 'granted'})).length, 1);
+        assert.equal(
+            (await instance.useNetworkDevices().getDevices({accessStatus: 'granted'})).length,
+            SIMULATED_NETWORK_DEVICES.length
+        );
         assert.equal((await instance.useNetworkDevices().getDevices({accessStatus: 'denied'})).length, 0);
     });
 
@@ -67,6 +73,23 @@ describe('createMockSdk', () => {
 
         await instance.useOnboardingV2().deregisterOnboardingGuidesHandler();
         assert.equal(state.guidesHandler, undefined);
+    });
+
+    it('keeps the two picker handlers apart — a peer is not a network device', async () => {
+        const {instance, state} = createMockSdk();
+        const onDevices = async () => ({requestId: 'r', applianceIds: ['a-1']});
+        const onPeer = async () => ({requestId: 'r', applianceIds: ['a-2']});
+
+        await instance.useOnboardingV2().registerDeviceSelectHandler(onDevices);
+        await instance.useOnboardingV2().registerEebusDeviceSelectHandler(onPeer);
+        assert.equal(state.deviceSelectHandler, onDevices);
+        assert.equal(state.eebusDeviceSelectHandler, onPeer);
+
+        // Deregistering one leaves the other registered: an app that onboards
+        // both kinds registers both, and neither is a fallback for the other.
+        await instance.useOnboardingV2().deregisterDeviceSelectHandler();
+        assert.equal(state.deviceSelectHandler, undefined);
+        assert.equal(state.eebusDeviceSelectHandler, onPeer);
     });
 
     it('records the run actions an app asks for', async () => {

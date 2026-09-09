@@ -42,9 +42,13 @@ and types into a device — a guide that shows an empty box for them cannot be w
   as a cloud/local pair in the shape the hub sends:
   `wss://api.enyo-energy.de/ocpp/<deviceSlug>/<packageSlug>` and
   `ws://<hub ip>/ocpp/<packageSlug>`.
-- **One device on the simulated LAN** (`useNetworkDevices()`), at `192.168.178.42`
-  with a MAC, open ports and access already granted, findable by the same id the host
-  hands your dynamic handler.
+- **Three devices on the simulated LAN** (`useNetworkDevices()`), from `192.168.178.42`,
+  each with a MAC, open ports and access already granted, findable by the same ids the
+  host hands your dynamic handler. They are detected through different channels
+  (`mdns`, `modbus`, `eebus`), so a `device-select` block's `detectedAt` filter has
+  something to narrow.
+- **Three EEBUS peers**, one of which announces no device type — the case a
+  `deviceTypes` filter has to exclude rather than wave through.
 
 When your app answers `null` for a dynamic block, the simulator falls back the way
 the cloud does: an `ocpp-url` slot gets the host-built URL, a `device-ip` slot gets
@@ -52,8 +56,8 @@ the run's device address — and stays empty when the run has no device, exactly
 a `device-not-found` run. The UI labels which of the two filled the slot.
 
 It then serves a local UI on <http://localhost:4600> that lists your guides by start
-variant (`device-not-found`, `device-found-config`, `manual-setup`, `maintenance`) and
-lets you walk any of them:
+variant (`device-not-found`, `device-found-config`, `manual-setup`, `maintenance`,
+`offline-reconnect`) and lets you walk any of them:
 
 - **Choices, actions, inputs** — no hardware answers here, so you pick the outcome you
   want to walk. That is how a single guide is checked down each of its branches.
@@ -62,6 +66,19 @@ lets you walk any of them:
 - **Additional-setup blocks** call your `registerAdditionalSetupHandler` with the
   fields you filled in, and route on the verdict exactly as the device does —
   anything that is not a declared outcome falls back to the reserved `failed` branch.
+- **Picker blocks** (`device-select`, `eebus-device-select`) render their list on step
+  entry, filtered by `detectedAt` / `deviceTypes`, and call your
+  `registerDeviceSelectHandler` / `registerEebusDeviceSelectHandler` with what was
+  picked. The appliance ids you answer with bind the run, which is what fills
+  `applianceId` for the dynamic and setup requests that follow. The host's rules are
+  the simulator's: exactly one match and `autoSelectSingleMatch` left on skips the
+  screen (the handler still runs, with `autoSelected: true`), no match never skips, and
+  nothing your handler does re-routes the flow — a rejection, a timeout and an empty
+  answer all take the positive branch with no appliance. Walking back onto a skipped
+  picker shows the screen, so you can change the pick.
+- **`offline-reconnect` runs** carry the appliance their guide names and no device, and
+  both pickers are handed that `applianceId` — answer with the same id to re-bind the
+  appliance rather than leaving the customer a duplicate.
 - Every guide is checked with the SDK's own validators, and the answer's `null` vs `[]`
   distinction is called out — an empty array retires every guide the host cached.
 - The right-hand panel streams your app's console output and every SDK call it made.
@@ -76,6 +93,10 @@ Options:
 | `--allow-network` | Let the app use the real network |
 | `--print` | Print the guides the app returned and exit |
 | `-f, --file <file>` | Package config to read. Its directory becomes the app root, so you can point at an app in another project |
+
+Note that `vendorId` and `modelIds` on a guide are enyo's to attach, not yours: the
+SDK's validator warns when a guide sets them, and the simulator shows that warning on
+the guide card.
 
 `example/onboarding-sim-fixture` is a runnable app with one guide per start variant —
 `cd` into it and run `enyo onboarding-sim` to see what the simulator does.

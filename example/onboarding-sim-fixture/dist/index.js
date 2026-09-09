@@ -9,9 +9,13 @@
  */
 const {
     EnergyApp,
+    EnyoEebusDeviceTypeEnum,
+    EnyoNetworkDeviceDetectedAtEnum,
     EnyoOnboardingV2ChoiceLayout,
+    EnyoOnboardingV2DeviceSelectOutcome,
     EnyoOnboardingV2DeviceSelection,
     EnyoOnboardingV2DynamicKind,
+    EnyoOnboardingV2EebusPairOutcome,
     EnyoOnboardingV2HintVariant,
     EnyoOnboardingV2InputValueType,
     EnyoOnboardingV2PauseReason,
@@ -37,8 +41,6 @@ const t = (de, en) => [
 /** The variant with everything in it: every interactive block, and three exits. */
 const wallboxGuide = defineOnboardingGuideV2({
     name: 'sim-wallbox-not-found',
-    vendorId: 'sim-vendor',
-    modelIds: ['sim-model'],
     title: t('Wallbox verbinden', 'Connect the wallbox'),
     startVariant: EnyoOnboardingV2StartVariant.DeviceNotFound,
     summary: t('Wallbox über OCPP anbinden.', 'Bring the wallbox in over OCPP.'),
@@ -188,8 +190,6 @@ const wallboxGuide = defineOnboardingGuideV2({
 /** The scan found something: confirm it is ours, then hand over to manual setup. */
 const foundGuide = defineOnboardingGuideV2({
     name: 'sim-device-found',
-    vendorId: 'sim-vendor',
-    modelIds: ['sim-model'],
     title: t('Gefundenes Gerät einrichten', 'Set up the device we found'),
     startVariant: EnyoOnboardingV2StartVariant.DeviceFoundConfig,
     startStepId: 'confirm',
@@ -230,8 +230,6 @@ const foundGuide = defineOnboardingGuideV2({
 /** Nothing was found and nothing is known: type it in by hand. */
 const manualGuide = defineOnboardingGuideV2({
     name: 'sim-manual-setup',
-    vendorId: 'sim-vendor',
-    modelIds: ['sim-model'],
     title: t('Manuell einrichten', 'Set up by hand'),
     startVariant: EnyoOnboardingV2StartVariant.ManualSetup,
     startStepId: 'manual-intro',
@@ -258,8 +256,6 @@ const manualGuide = defineOnboardingGuideV2({
 /** Maintenance: bound to an appliance that already exists. */
 const maintenanceGuide = defineOnboardingGuideV2({
     name: 'sim-firmware-service',
-    vendorId: 'sim-vendor',
-    modelIds: ['sim-model'],
     title: t('Wallbox warten', 'Service the wallbox'),
     startVariant: EnyoOnboardingV2StartVariant.Maintenance,
     applianceId: 'sim-appliance',
@@ -281,12 +277,80 @@ const maintenanceGuide = defineOnboardingGuideV2({
     ],
 });
 
+/**
+ * Offline reconnect: the appliance exists and has stopped talking to us.
+ *
+ * The variant's whole point is re-binding rather than duplicating, so both
+ * pickers are handed the run's `applianceId` and both handlers answer with it.
+ * The two are here together because they show the picker's two shapes: the
+ * device-select lists two mDNS devices and renders, while the EEBUS picker
+ * filters to heat pumps, is left with one peer, and skips its screen.
+ */
+const reconnectGuide = defineOnboardingGuideV2({
+    name: 'sim-heatpump-reconnect',
+    title: t('Wärmepumpe neu verbinden', 'Reconnect the heat pump'),
+    startVariant: EnyoOnboardingV2StartVariant.OfflineReconnect,
+    applianceId: 'sim-appliance',
+    notifyUser: true,
+    startStepId: 'rescan',
+    steps: [
+        {
+            id: 'rescan',
+            name: 'rescan',
+            title: t('Gerät im Netzwerk suchen', 'Find the device on the network'),
+            blocks: [
+                onboardingV2Block.deviceSelect('reconnect-pick', {
+                    headline: t('Gerät auswählen', 'Select the device'),
+                    description: t(
+                        'Nach einem Router-Wechsel hat das Gerät eine neue Adresse.',
+                        'After a router swap the device has a new address.'
+                    ),
+                    detectedAt: [EnyoNetworkDeviceDetectedAtEnum.Mdns],
+                    outcomes: [
+                        {id: 'picked', value: EnyoOnboardingV2DeviceSelectOutcome.Selected, label: t('Ausgewählt', 'Selected')},
+                        {id: 'none', value: EnyoOnboardingV2DeviceSelectOutcome.NotFound, label: t('Nicht dabei', 'Not listed')},
+                    ],
+                }),
+            ],
+            transitions: [
+                onOutcomeV2('reconnect-pick', 'picked', onboardingV2Target.step('repair')),
+                onOutcomeV2('reconnect-pick', 'none', onboardingV2Target.support('device-still-offline')),
+            ],
+        },
+        {
+            id: 'repair',
+            name: 'repair',
+            title: t('EEBUS-Kopplung erneuern', 'Renew the EEBUS pairing'),
+            blocks: [
+                onboardingV2Block.eebusDeviceSelect('reconnect-pair', {
+                    headline: t('Wärmepumpe koppeln', 'Pair the heat pump'),
+                    description: t(
+                        'Bestätige die Kopplung am Display der Wärmepumpe.',
+                        'Confirm the pairing on the heat pump\'s display.'
+                    ),
+                    deviceTypes: [EnyoEebusDeviceTypeEnum.HeatPumpAppliance],
+                    outcomes: [
+                        {id: 'paired', value: EnyoOnboardingV2EebusPairOutcome.Paired, label: t('Gekoppelt', 'Paired')},
+                        {id: 'none', value: EnyoOnboardingV2EebusPairOutcome.NotFound, label: t('Nichts gefunden', 'Nothing found')},
+                        {id: 'error', value: EnyoOnboardingV2EebusPairOutcome.Failure, label: t('Kopplung fehlgeschlagen', 'Pairing failed')},
+                    ],
+                }),
+            ],
+            transitions: [
+                onOutcomeV2('reconnect-pair', 'paired', onboardingV2Target.success()),
+                onOutcomeV2('reconnect-pair', 'none', onboardingV2Target.support('no-eebus-peer')),
+                onOutcomeV2('reconnect-pair', 'error', onboardingV2Target.support('ship-handshake-failed')),
+            ],
+        },
+    ],
+});
+
 app.register(async (packageName, version, channel, deviceId) => {
     console.log(`fixture app registered: ${packageName} v${version} on ${channel} (${deviceId})`);
 
     await app.useOnboardingV2().registerOnboardingGuidesHandler(async request => ({
         requestId: request.requestId,
-        guides: [wallboxGuide, foundGuide, manualGuide, maintenanceGuide],
+        guides: [wallboxGuide, foundGuide, manualGuide, maintenanceGuide, reconnectGuide],
         detail: 'onboarding-sim fixture',
     }));
 
@@ -296,6 +360,31 @@ app.register(async (packageName, version, channel, deviceId) => {
             return null;
         }
         return {requestId: request.requestId, kind: request.kind, value: '192.168.178.42'};
+    });
+
+    await app.useOnboardingV2().registerDeviceSelectHandler(async request => {
+        console.log(
+            `device-select '${request.blockId}': ${request.devices.length} device(s)` +
+            `${request.autoSelected ? ', auto-selected' : ''}`
+        );
+        // A reconnect run re-points the appliance it came in with. Creating a
+        // second one would leave the customer with a duplicate and a history
+        // split across two records.
+        return {
+            requestId: request.requestId,
+            applianceIds: [request.applianceId ?? `appliance-${request.devices[0].id}`],
+        };
+    });
+
+    await app.useOnboardingV2().registerEebusDeviceSelectHandler(async request => {
+        console.log(
+            `eebus-device-select '${request.blockId}': ${request.peer.deviceType ?? 'no announced type'}` +
+            `${request.autoSelected ? ', auto-selected' : ''}`
+        );
+        return {
+            requestId: request.requestId,
+            applianceIds: [request.applianceId ?? `appliance-${request.peer.ski.slice(0, 8)}`],
+        };
     });
 
     await app.useOnboardingV2().registerAdditionalSetupHandler(async request => {

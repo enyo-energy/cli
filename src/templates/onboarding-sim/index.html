@@ -159,6 +159,16 @@
             margin-top: 14px;
         }
         .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        /* A picker candidate: a full-width row that stays a button. */
+        .candidate {
+            display: block;
+            width: 100%;
+            text-align: left;
+            padding: 10px 12px;
+            font-weight: 500;
+        }
+        .candidate.picked { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+        .candidate .name { font-weight: 600; }
         .stack { display: flex; flex-direction: column; gap: 8px; }
         .muted { color: var(--muted); }
         a { color: var(--accent); }
@@ -316,6 +326,8 @@
             el('span', {class: 'badge ' + (state.app.handlers.guides ? 'ok' : 'err'), text: 'guides handler'}),
             el('span', {class: 'badge ' + (state.app.handlers.dynamic ? 'ok' : ''), text: 'dynamic handler'}),
             el('span', {class: 'badge ' + (state.app.handlers.additionalSetup ? 'ok' : ''), text: 'setup handler'}),
+            el('span', {class: 'badge ' + (state.app.handlers.deviceSelect ? 'ok' : ''), text: 'device-select handler'}),
+            el('span', {class: 'badge ' + (state.app.handlers.eebusDeviceSelect ? 'ok' : ''), text: 'eebus handler'}),
         );
     };
 
@@ -514,6 +526,88 @@
                         : null,
                 ]);
             }
+            case 'device-select':
+            case 'eebus-device-select': {
+                // The picker owns its step: the list is rendered on entry, and
+                // the confirm button only commits the highlighted entry — it is
+                // not a trigger the installer has to find first.
+                const picker = (view.pickers || {})[block.id] || {candidates: [], wouldSkip: false};
+                const resolution = picker.resolution;
+                const isEebus = block.type === 'eebus-device-select';
+                const positive = isEebus ? 'paired' : 'selected';
+                let selected = resolution ? resolution.key : (picker.candidates[0] || {}).key;
+
+                const rows = new Map();
+                const highlight = () => rows.forEach((row, key) => {
+                    row.className = 'candidate' + (key === selected ? ' picked' : '');
+                });
+                picker.candidates.forEach(candidate => {
+                    rows.set(candidate.key, el('button', {
+                        class: 'candidate',
+                        disabled: isDecision ? null : 'disabled',
+                        onclick: () => { selected = candidate.key; highlight(); },
+                    }, [
+                        el('div', {class: 'name', text: candidate.title}),
+                        candidate.subtitle ? el('div', {class: 'muted mono', text: candidate.subtitle}) : null,
+                        el('div', {style: 'margin-top:4px'}, candidate.badges.map(badge => el('span', {class: 'badge', text: badge}))),
+                    ]));
+                });
+                highlight();
+
+                const confirm = () => api(`/api/runs/${state.view.runId}/pick`, {
+                    method: 'POST',
+                    body: JSON.stringify({blockId: block.id, key: selected}),
+                }).then(body => showView(body.view));
+
+                return el('div', {class: 'block card'}, [
+                    el('div', {class: 'muted', text: block.type + (isEebus
+                        ? (block.deviceTypes ? ' · ' + block.deviceTypes.join(', ') : ' · every peer')
+                        : (block.detectedAt ? ' · ' + block.detectedAt.join(', ') : ' · every device'))}),
+                    block.headline ? el('h3', {style: 'margin-top:6px', text: text(block.headline)}) : null,
+                    block.description ? el('p', {text: text(block.description)}) : null,
+                    picker.candidates.length === 0
+                        // Nothing matched, and nothing is skipped here: the empty
+                        // state is what sends the installer down `not-found`.
+                        ? el('div', {class: 'hint warning', text: isEebus
+                            ? 'No peer announced itself with a matching type — the not-found branch is the way out.'
+                            : 'No detected device matches this block\'s filter — the not-found branch is the way out.'})
+                        : el('div', {class: 'stack'}, [...rows.values()]),
+                    picker.wouldSkip
+                        ? el('div', {class: 'muted', style: 'margin-top:6px', text:
+                            'Only one candidate matches, so a device would skip this screen and fire ' + positive + ' by itself.'})
+                        : null,
+                    el('div', {class: 'row', style: 'margin-top:10px'}, [
+                        picker.candidates.length > 0
+                            ? el('button', {
+                                class: isDecision ? 'primary' : 'ghost',
+                                disabled: isDecision ? null : 'disabled',
+                                onclick: confirm,
+                            }, document.createTextNode(text(block.label) || (isEebus ? 'Pair' : 'Select')))
+                            : null,
+                        // Every branch that is not the pick: nothing was listed,
+                        // or the handshake never came up. No handler runs for
+                        // these — they are ordinary outcomes.
+                        ...block.outcomes.filter(outcome => outcome.value !== positive).map(outcome => el('button', {
+                            class: 'ghost',
+                            disabled: isDecision ? null : 'disabled',
+                            onclick: () => answer({kind: 'outcome', blockId: block.id, outcomeId: outcome.id}, outcome.value),
+                        }, document.createTextNode(text(outcome.label) + ' (' + outcome.value + ')'))),
+                    ]),
+                    resolution
+                        ? el('div', {style: 'margin-top:10px'}, [
+                            el('span', {class: 'badge ok', text: (resolution.autoSelected ? 'auto-selected ' : 'picked ') + resolution.label}),
+                            el('span', {
+                                class: 'badge ' + (resolution.applianceIds.length ? 'ok' : 'warn'),
+                                text: resolution.applianceIds.length
+                                    ? 'appliance(s): ' + resolution.applianceIds.join(', ')
+                                    : 'no appliance',
+                            }),
+                            resolution.note ? el('div', {class: 'muted', style: 'margin-top:4px', text: resolution.note}) : null,
+                            resolution.detail ? el('div', {class: 'mono', style: 'margin-top:4px', text: resolution.detail}) : null,
+                        ])
+                        : null,
+                ]);
+            }
             default:
                 return el('div', {class: 'block mono muted', text: 'Unsupported block type: ' + block.type});
         }
@@ -535,6 +629,7 @@
             el('button', {class: 'ghost', onclick: () => api(`/api/runs/${view.runId}/reset`, {method: 'POST'}).then(showView)}, document.createTextNode('Restart')),
             el('span', {class: 'badge', text: view.context.variant}),
             view.context.networkDeviceId ? el('span', {class: 'badge', text: 'device ' + view.context.deviceIp}) : null,
+            view.context.eebusSki ? el('span', {class: 'badge', text: 'ski ' + view.context.eebusSki.slice(0, 8) + '…'}) : null,
             view.context.applianceId ? el('span', {class: 'badge', text: 'appliance ' + view.context.applianceId}) : null,
         ]);
         stage.appendChild(header);
