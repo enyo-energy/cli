@@ -15,7 +15,7 @@
  * Every call is recorded and streamed to the UI. An app that leans on a call
  * this mock answers with nothing shows up there rather than failing silently.
  */
-import {EnyoPackageChannel} from '@enyo-energy/energy-app-sdk';
+import {EnyoEnergyAppEnvironment, EnyoPackageChannel} from '@enyo-energy/energy-app-sdk';
 import type {
     EnyoOnboardingV2AdditionalSetupHandler,
     EnyoOnboardingV2DeviceSelectHandler,
@@ -60,6 +60,13 @@ export interface MockSdkOptions {
     channel: EnyoPackageChannel;
     deviceId: string;
     /**
+     * The runtime the app is told it is running in. The simulator has no
+     * hardware behind it, so an app that skips real device access under
+     * {@link EnyoEnergyAppEnvironment.DeveloperPortalSimulation} must take that
+     * branch here too.
+     */
+    environment: EnyoEnergyAppEnvironment;
+    /**
      * Whether `useFetch()` hands out the real `fetch`.
      *
      * Off by default: a simulated run must not reach a vendor cloud, and an app
@@ -76,6 +83,7 @@ export const DEFAULT_MOCK_OPTIONS: Omit<MockSdkOptions, 'onCall'> = {
     packageVersion: 1,
     channel: EnyoPackageChannel.Local,
     deviceId: 'sim-device',
+    environment: EnyoEnergyAppEnvironment.DeveloperPortalSimulation,
     allowNetwork: false,
 };
 
@@ -83,7 +91,8 @@ export type RegisterCallback = (
     packageName: string,
     version: number,
     channel: EnyoPackageChannel,
-    deviceId: string
+    deviceId: string,
+    environment: EnyoEnergyAppEnvironment
 ) => void | Promise<void>;
 
 /** What the app registered while it was booting. */
@@ -535,6 +544,7 @@ export const createMockSdk = (options: Partial<MockSdkOptions> = {}): MockSdk =>
         useEnergyManager: packageAccessor('useEnergyManager'),
         useElectricityTariff: packageAccessor('useElectricityTariff'),
         useWeatherForecasting: packageAccessor('useWeatherForecasting'),
+        useWeatherHistory: packageAccessor('useWeatherHistory'),
         usePvForecasting: packageAccessor('usePvForecasting'),
         useDynamicPriceForecast: packageAccessor('useDynamicPriceForecast'),
         usePvSystem: packageAccessor('usePvSystem'),
@@ -563,6 +573,7 @@ export const createMockSdk = (options: Partial<MockSdkOptions> = {}): MockSdk =>
         useEpexSpotPrices: packageAccessor('useEpexSpotPrices'),
         useGridFee: packageAccessor('useGridFee'),
         useCommandLog: packageAccessor('useCommandLog'),
+        useCalibration: packageAccessor('useCalibration'),
     };
 
     return {instance, state, options: config};

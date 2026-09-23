@@ -275,7 +275,8 @@ export const loadEnergyApp = async (options: LoadEnergyAppOptions = {}): Promise
             mock.options.packageName,
             mock.options.packageVersion,
             mock.options.channel,
-            mock.options.deviceId
+            mock.options.deviceId,
+            mock.options.environment
         );
     }
 
