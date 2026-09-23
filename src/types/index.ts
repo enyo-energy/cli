@@ -1,4 +1,5 @@
 import type {
+    EnergyAppPackageDefinition,
     EnergyAppPackageFirmwareFile,
     EnergyAppPackagePermission,
     EnergyAppPackagePublicFile,
@@ -157,6 +158,48 @@ export interface CommandOptions {
     file?: string;
     channel?: 'production' | 'staging';
     releaseNotes?: string;
+    /** Publish even when nothing changed since the channel's latest release. */
+    force?: boolean;
+}
+
+/**
+ * One package config resolved into everything a release needs, before the
+ * registry has been asked anything.
+ *
+ * Exists so the content fingerprints can be computed — and a pointless release
+ * refused — before the command prompts for release notes.
+ */
+export interface PreparedRelease {
+    config: EnergyAppPackageDefinition;
+    /** The `*.package.ts` this came from, when the run discovered one. */
+    configFile?: string;
+    packageName: string;
+    firmware: PreparedFirmwareFile[];
+    files: PreparedPublicFile[];
+    /** SHA-256 of the logo, when the package declares one. */
+    uploadLogo?: string;
+    /** SHA-256 over the build output's contents. */
+    bundleSha256: string;
+    /** SHA-256 over the canonicalised payload, minus release notes. */
+    definitionSha256: string;
+    /** Set when the pre-flight check matched this against a published release. */
+    duplicateOfVersion?: number;
+}
+
+/**
+ * The registry's answer to "what does this channel already carry?" — enough to
+ * tell whether a release would be a duplicate, and nothing else.
+ *
+ * The hashes are absent for a release published before the registry recorded
+ * them, in which case no comparison is possible and the release goes ahead.
+ */
+export interface LatestReleaseFingerprint {
+    hasRelease: boolean;
+    versionNumber?: number;
+    status?: string;
+    channel?: string;
+    bundleSha256?: string;
+    definitionSha256?: string;
 }
 
 export interface OnboardingSimOptions extends CommandOptions {
