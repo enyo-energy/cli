@@ -88,6 +88,7 @@ program.command('release')
     .option('-f, --file <file>', 'Specific config file to release (if not set, searches for all *.package.ts files)')
     .option('--channel <channel>', 'Package channel (production or staging)', 'production')
     .option('--release-notes <file>', 'Path to a JSON file with release notes, e.g. {"de":"…","en":"…"} (skips the interactive prompt)')
+    .option('--force', 'Publish even when nothing changed since the last release on this channel')
     .action(async (options: CommandOptions) => {
         try {
             await releaseCommand(options);

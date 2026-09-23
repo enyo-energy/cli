@@ -22,6 +22,40 @@ To see all available commands, run:
 ```bash
 enyo --help
 ```
+## Releasing
+
+```bash
+npx rsbuild build
+enyo release --api-key <API KEY>
+```
+
+The CLI refuses a release that would change nothing. Before it asks for release notes
+it fingerprints two things and compares them with what the channel already carries:
+
+- the **contents** of `dist` — every file's path and digest, not the tarball, which
+  carries timestamps and differs on every build;
+- the **package definition** as it goes over the wire, minus the release notes and the
+  internal description.
+
+Both equal to the latest release on that channel means the release is skipped and the
+command exits non-zero — in CI too, which is where a no-op release is most likely to
+go unnoticed. It matters because a new version number is all a device compares: the
+whole fleet would download and reinstall identical bytes and restart your app for it.
+
+Changing only the release note counts as unchanged. Publish anyway with `--force`,
+which is also what you want after an upload died halfway, for a rollback reissue, and
+when promoting the same build to another channel.
+
+| Option | Meaning |
+| --- | --- |
+| `--channel <channel>` | `production` (default) or `staging` |
+| `--release-notes <file>` | JSON file with `{"de": "…", "en": "…"}`, skipping the prompt |
+| `--force` | Publish even when nothing changed |
+| `-f, --file <file>` | Release one specific config instead of every `*.package.ts` |
+
+With several `*.package.ts` files, an unchanged one is skipped and the others are still
+released; the command reports which were skipped and exits non-zero.
+
 ## Onboarding v2 simulator
 Walk your app's onboarding v2 guides in a browser, without a device:
 
