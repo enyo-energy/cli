@@ -218,11 +218,11 @@ export const createSimulatorServer = (options: SimulatorServerOptions): Express 
      * behind them and no handler to call.
      */
     server.post('/api/runs/:id/pick', handle(async (request, response) => {
-        const body = request.body as { blockId?: string; key?: string };
+        const body = request.body as { blockId?: string; key?: string; autoSelected?: boolean };
         if (!body.blockId || !body.key) {
             throw new Error('blockId and key are required');
         }
-        const resolution = await store.pick(request.params.id, body.blockId, body.key);
+        const resolution = await store.pick(request.params.id, body.blockId, body.key, body.autoSelected === true);
         response.json({resolution, view: await store.view(request.params.id)});
     }));
 

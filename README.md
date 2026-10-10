@@ -105,11 +105,11 @@ variant (`device-not-found`, `device-found-config`, `manual-setup`, `maintenance
   `registerDeviceSelectHandler` / `registerEebusDeviceSelectHandler` with what was
   picked. The appliance ids you answer with bind the run, which is what fills
   `applianceId` for the dynamic and setup requests that follow. The host's rules are
-  the simulator's: exactly one match and `autoSelectSingleMatch` left on skips the
-  screen (the handler still runs, with `autoSelected: true`), no match never skips, and
-  nothing your handler does re-routes the flow — a rejection, a timeout and an empty
-  answer all take the positive branch with no appliance. Walking back onto a skipped
-  picker shows the screen, so you can change the pick.
+  the simulator's: exactly one match and `autoSelectSingleMatch` left on highlights that
+  candidate but still shows the screen (confirming it calls the handler with
+  `autoSelected: true`), and nothing your handler does re-routes the flow — a
+  rejection, a timeout and an empty answer all take the positive branch with no
+  appliance.
 - **`offline-reconnect` runs** carry the appliance their guide names and no device, and
   both pickers are handed that `applianceId` — answer with the same id to re-bind the
   appliance rather than leaving the customer a duplicate.

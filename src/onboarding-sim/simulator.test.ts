@@ -283,12 +283,12 @@ describe('picker blocks', () => {
         const picker = view.pickers['reconnect-pick'];
         assert.equal(picker.kind, 'device-select');
         // Two devices announce themselves over mDNS; the Modbus-only one is
-        // filtered out, so the screen is rendered rather than skipped.
+        // filtered out, so nothing is highlighted for the installer.
         assert.deepEqual(
             picker.candidates.map(candidate => candidate.key).sort(),
             ['sim-network-device', 'sim-network-device-heatpump']
         );
-        assert.equal(picker.wouldSkip, false);
+        assert.equal(picker.preselectedKey, undefined);
     });
 
     it('hands the pick to the app, binds the run to it, and takes `selected`', async () => {
@@ -308,37 +308,34 @@ describe('picker blocks', () => {
         assert.equal(view.context.applianceId, 'sim-appliance');
     });
 
-    it('skips the screen when exactly one candidate matches, and still calls the handler', async () => {
+    it('highlights the lone match instead of skipping the screen, as the app does', async () => {
         const run = store.createRun(reconnectIndex);
         await store.pick(run.id, 'reconnect-pick', 'sim-network-device-heatpump');
 
-        // The EEBUS picker filters to heat pumps and is left with one peer, so
-        // the host binds it, fires `paired` and never renders the step — which
-        // here walks the run straight to its success terminal.
+        // The EEBUS picker filters to heat pumps and is left with one peer. The
+        // app highlights it and still draws the step: nothing is paired until
+        // the installer confirms.
+        const view = await store.view(run.id);
+        assert.equal(view.status, 'await');
+        assert.equal(view.step?.name, 'repair');
+        assert.equal(view.pickers['reconnect-pair'].preselectedKey, SIMULATED_EEBUS_PEERS[0].ski);
+        assert.equal(store.run(run.id).picks['reconnect-pair'], undefined);
+        assert.equal(view.renderModel.input.kind, 'picker');
+    });
+
+    it('reports a confirmed highlight as auto-selected, and still calls the handler', async () => {
+        const run = store.createRun(reconnectIndex);
+        await store.pick(run.id, 'reconnect-pick', 'sim-network-device-heatpump');
+        const pick = await store.pick(run.id, 'reconnect-pair', SIMULATED_EEBUS_PEERS[0].ski, true);
+
+        assert.equal(pick.autoSelected, true);
+        assert.equal(pick.kind, 'eebus-device-select');
+        assert.deepEqual(Array.from(pick.applianceIds), ['sim-appliance']);
+        assert.equal(store.run(run.id).context.eebusSki, SIMULATED_EEBUS_PEERS[0].ski);
+
         const view = await store.view(run.id);
         assert.equal(view.status, 'terminal');
         assert.equal(view.terminal?.type, EnyoOnboardingV2TargetType.Success);
-
-        const pick = store.run(run.id).picks['reconnect-pair'];
-        assert.equal(pick.autoSelected, true);
-        assert.equal(pick.kind, 'eebus-device-select');
-        assert.equal(pick.key, SIMULATED_EEBUS_PEERS[0].ski);
-        assert.deepEqual(Array.from(pick.applianceIds), ['sim-appliance']);
-        assert.equal(store.run(run.id).context.eebusSki, SIMULATED_EEBUS_PEERS[0].ski);
-    });
-
-    it('shows the skipped screen again when the installer walks back onto it', async () => {
-        const run = store.createRun(reconnectIndex);
-        await store.pick(run.id, 'reconnect-pick', 'sim-network-device-heatpump');
-        assert.equal((await store.view(run.id)).status, 'terminal');
-
-        store.back(run.id);
-        const view = await store.view(run.id);
-        // The pick is remembered, so the auto-select does not fire again and
-        // bounce the installer forward — the screen is theirs to change.
-        assert.equal(view.step?.name, 'repair');
-        assert.equal(view.pickers['reconnect-pair'].wouldSkip, true);
-        assert.ok(view.pickers['reconnect-pair'].resolution);
     });
 
     it('routes an empty list through not-found, which never skips', async () => {
@@ -378,9 +375,8 @@ describe('picker blocks', () => {
         assert.equal(resolution.source, 'no-handler');
         assert.deepEqual(resolution.applianceIds, []);
         assert.equal(bareStore.run(run.id).context.networkDeviceId, 'sim-network-device');
-        // The run walks on to the EEBUS picker, which still pairs and — with the
-        // handler it does have — still produces an appliance.
-        assert.equal((await bareStore.view(run.id)).terminal?.type, EnyoOnboardingV2TargetType.Success);
+        // The run walks on to the EEBUS picker regardless.
+        assert.equal((await bareStore.view(run.id)).step?.name, 'repair');
     });
 
     it('takes the positive branch when the app\'s handler rejects', async () => {
@@ -398,7 +394,7 @@ describe('picker blocks', () => {
         assert.match(resolution.note ?? '', /vendor cloud is down/);
         // A handler that fails loudly must not strand the installer: the run
         // takes `selected` and walks on exactly as it would have.
-        assert.equal((await angryStore.view(run.id)).terminal?.type, EnyoOnboardingV2TargetType.Success);
+        assert.equal((await angryStore.view(run.id)).step?.name, 'repair');
     });
 });
 

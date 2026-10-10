@@ -46,6 +46,7 @@ import {
     type Answers,
 } from './flow-walker.js';
 import {defaultOutcomeId, isValidInput} from './input-rules.js';
+import {buildRenderModel, type RenderModel} from './render-model.js';
 import {
     SIMULATED_NETWORK_DEVICE,
     simulatedDevicesFor,
@@ -145,9 +146,9 @@ export interface PickResolution {
     /** The candidate's title, for the event log and the badge. */
     label: string;
     /**
-     * `true` when the host picked on the installer's behalf because exactly one
-     * candidate matched and the block left `autoSelectSingleMatch` on — on a
-     * device the screen is never rendered.
+     * `true` when the installer confirmed the candidate the app highlighted for
+     * them — the lone match of a block that left `autoSelectSingleMatch` on —
+     * rather than picking one themselves.
      */
     autoSelected: boolean;
     /**
@@ -169,13 +170,12 @@ export interface PickerView {
     kind: PickKind;
     candidates: PickCandidate[];
     /**
-     * `true` when this screen would not be rendered on a device: one candidate
-     * matched and the block left `autoSelectSingleMatch` on. The simulator
-     * renders it anyway once the installer walks back onto it, so the pick can
-     * be changed — which is the one place the preview knowingly shows a screen a
-     * device would not.
+     * The candidate the app highlights on entry: the lone match of a block that
+     * left `autoSelectSingleMatch` on. Highlighted, never committed — the app
+     * still draws the step and the installer still confirms it, so they can see
+     * which box the run is about to bind.
      */
-    wouldSkip: boolean;
+    preselectedKey?: string;
     resolution?: PickResolution;
 }
 
@@ -234,6 +234,8 @@ export interface RunView {
     /** The picker blocks of the current step, keyed by block id. */
     pickers: Record<string, PickerView>;
     events: { at: number; message: string }[];
+    /** The step exactly as the enyo app is handed it — what the preview renders. */
+    renderModel: RenderModel;
 }
 
 /** The five start variants, in the order the UI lists them. */
@@ -730,43 +732,12 @@ export class RunStore {
                 blockId: block.id,
                 kind: pickKindOf(block),
                 candidates,
-                wouldSkip: candidates.length === 1 && block.autoSelectSingleMatch !== false,
+                preselectedKey:
+                    candidates.length === 1 && block.autoSelectSingleMatch !== false ? candidates[0].key : undefined,
                 resolution: run.picks[block.id],
             };
         }
         return views;
-    }
-
-    /**
-     * Skip the screen when exactly one candidate matches, the way the host does.
-     *
-     * Everything else still happens — the handler is called, the run is bound,
-     * the positive outcome is fired — because skipping is a rendering decision
-     * and not a semantic one. Nothing is skipped with **no** match: the step
-     * renders its empty list and the installer leaves through `not-found`, which
-     * is the branch that explains why.
-     *
-     * Once a pick is recorded it is never re-made, so walking back onto an
-     * auto-selected picker shows the screen instead of bouncing the installer
-     * forward again.
-     *
-     * @returns `true` when the walk moved on, so the caller re-simulates.
-     */
-    private async autoSelectPicker(run: SimRun, step: EnyoOnboardingV2Step): Promise<boolean> {
-        const decision = decisionBlock(step);
-        if (!decision || !isPickerBlock(decision) || run.picks[decision.id] || run.answers[decision.id]) {
-            return false;
-        }
-        if (decision.autoSelectSingleMatch === false) {
-            return false;
-        }
-        const candidates = this.candidatesFor(decision);
-        if (candidates.length !== 1) {
-            return false;
-        }
-
-        await this.resolvePick(run, step, decision, candidates[0], true);
-        return Boolean(run.answers[decision.id]);
     }
 
     /**
@@ -775,8 +746,12 @@ export class RunStore {
      * The positive branch only: a run that came away with nothing takes
      * `not-found` (or, for a handshake that did not come up, `failure`), and
      * those are ordinary outcome answers with no handler behind them.
+     *
+     * `autoSelected` is what the browser says: the installer confirmed the
+     * candidate the app highlighted rather than picking one themselves. It is
+     * only believed for the candidate that is actually highlighted.
      */
-    async pick(runId: string, blockId: string, key: string): Promise<PickResolution> {
+    async pick(runId: string, blockId: string, key: string, autoSelected = false): Promise<PickResolution> {
         const run = this.run(runId);
         const guide = this.guideOf(run);
         const walk = simulate(guide, run.answers);
@@ -790,7 +765,8 @@ export class RunStore {
         if (!candidate) {
             throw new Error(`'${key}' is not on ${blockId}'s list — its filter leaves it out`);
         }
-        return this.resolvePick(run, step, block, candidate, false);
+        const preselected = this.pickerViews(run, step)[blockId]?.preselectedKey;
+        return this.resolvePick(run, step, block, candidate, autoSelected && preselected === key);
     }
 
     /**
@@ -977,16 +953,8 @@ export class RunStore {
     async view(runId: string): Promise<RunView> {
         const run = this.run(runId);
         const guide = this.guideOf(run);
-        let walk = simulate(guide, run.answers);
-        let step = stepByName(guide, walk.currentStepName);
-
-        // A skipped picker can land on another picker that skips too, so this
-        // runs until the walk settles. It terminates because a pick is recorded
-        // before the walk moves on, and a recorded pick never fires again.
-        while (step && walk.status === 'await' && (await this.autoSelectPicker(run, step))) {
-            walk = simulate(guide, run.answers);
-            step = stepByName(guide, walk.currentStepName);
-        }
+        const walk = simulate(guide, run.answers);
+        const step = stepByName(guide, walk.currentStepName);
 
         if (step && walk.status === 'await') {
             await this.resolveDynamicBlocks(run, step);
@@ -999,6 +967,26 @@ export class RunStore {
             decision && 'outcomes' in decision && Array.isArray(decision.outcomes)
                 ? defaultOutcomeId(decision.outcomes as { id: string; value: string }[])
                 : undefined;
+
+        const isTerminal = walk.status === 'terminal';
+        const canGoBack = decidedAnswerKeys(guide, run.answers).length > 0;
+        const renderModel = buildRenderModel({
+            guide,
+            step,
+            visited: walk.visited,
+            isTerminal,
+            terminal: walk.terminal,
+            canGoBack,
+            inputs: run.inputs,
+            setupMessages: Object.fromEntries(
+                Object.values(run.setups).map(setup => [setup.blockId, setup.message])
+            ),
+            dynamicValues: Object.fromEntries(
+                Object.values(run.dynamic).map(resolution => [resolution.blockId, resolution.value])
+            ),
+            fileUrl: name =>
+                this.app.files.some(file => file.name === name) ? `/api/files/${encodeURIComponent(name)}` : undefined,
+        });
 
         return {
             runId: run.id,
@@ -1014,12 +1002,13 @@ export class RunStore {
                 : undefined,
             visited: walk.visited,
             stepsRemaining: step ? stepsToTerminal(guide, step.name) : 0,
-            canGoBack: decidedAnswerKeys(guide, run.answers).length > 0,
+            canGoBack,
             inputs: run.inputs,
             dynamic: run.dynamic,
             setups: run.setups,
             pickers: step && walk.status !== 'terminal' ? this.pickerViews(run, step) : {},
             events: run.events,
+            renderModel,
         };
     }
 
