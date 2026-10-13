@@ -116,6 +116,11 @@ variant (`device-not-found`, `device-found-config`, `manual-setup`, `maintenance
 - Every guide is checked with the SDK's own validators, and the answer's `null` vs `[]`
   distinction is called out — an empty array retires every guide the host cached.
 - The right-hand panel streams your app's console output and every SDK call it made.
+- **Basket → PDF**: „Add to basket" keeps a copy of the screen as it looks right now,
+  typed values included. Collect screens from any guide, reorder them, add a note per
+  page, then „Print PDF" lays them out on A4 — one screen per page, with the guide,
+  step and note — and opens the browser's print dialog; pick „Save as PDF" there. The
+  basket lives in the browser tab and survives a page refresh and „Reload app".
 
 Options:
 

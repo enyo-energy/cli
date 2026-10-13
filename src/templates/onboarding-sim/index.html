@@ -401,6 +401,75 @@
         .viewer p { color: #fff; font-size: 13px; text-align: center; padding: 12px 20px; }
 
         .center-screen { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 24px; padding: 24px 0; }
+
+        /* ---- basket: screens collected for the PDF ------------------------ */
+
+        .basket-item { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--gray-200); }
+        .basket-item:first-child { padding-top: 0; }
+        /* A frozen copy of the step's content, at a quarter of its size. */
+        .basket-thumb {
+            width: 108px; height: 152px; flex-shrink: 0; overflow: hidden; pointer-events: none;
+            border-radius: 0.5rem; border: 1px solid var(--gray-200); background: #fff;
+        }
+        .basket-thumb > .print-screen { transform: scale(.25); transform-origin: top left; padding-top: 16px; }
+
+        /* A step's content without the phone around it: the app's column, unframed. */
+        .print-screen { width: 430px; display: flex; flex-direction: column; }
+        .print-screen .app-scroll { overflow: visible; flex: none; }
+        /* The app's white cards sit on its grey background; on white paper they need an edge. */
+        .print-screen .app-card { border: 1px solid var(--gray-200); }
+        .basket-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+        .basket-body .title { font-weight: 600; font-size: 12px; }
+        .basket-body textarea {
+            width: 100%; min-height: 44px; resize: vertical; font-family: inherit; font-size: 12px;
+            border: 1px solid var(--gray-200); border-radius: 0.5rem; padding: 5px 7px;
+        }
+        .basket-body .tool { padding: 3px 8px; }
+
+        /*
+         * The PDF: one A4 page per basket entry, printed by the browser. It is
+         * built into #print-root only while printing and hidden on screen —
+         * except while it is being measured, which needs real layout.
+         */
+        #print-root { display: none; }
+        #print-root.measuring {
+            display: block; position: fixed; top: 0; left: -100000px; visibility: hidden;
+        }
+        .print-page {
+            width: 210mm;
+            height: 297mm;
+            padding: 14mm 16mm 12mm;
+            display: flex;
+            flex-direction: column;
+            gap: 6mm;
+            background: #fff;
+            overflow: hidden;
+            break-after: page;
+            break-inside: avoid;
+        }
+        .print-page:last-child { break-after: auto; }
+        .print-head { display: flex; align-items: flex-end; gap: 8mm; padding-bottom: 4mm; border-bottom: 1px solid var(--gray-300); }
+        .print-head .print-main { flex: 1; min-width: 0; }
+        .print-head .print-kicker { font-size: 9pt; text-transform: uppercase; letter-spacing: .06em; color: var(--gray-500); font-weight: 600; }
+        .print-head .print-guide { font-size: 15pt; font-weight: 700; letter-spacing: -0.01em; margin-top: 1mm; }
+        .print-head .print-step { font-size: 10pt; color: var(--gray-600); margin-top: 1mm; }
+        .print-head .print-count { text-align: right; font-size: 9pt; color: var(--gray-500); white-space: nowrap; }
+        .print-head .print-count strong { display: block; font-size: 20pt; line-height: 1; color: var(--primary-900); }
+        /* The phone sits in what is left of the page, zoomed down when it is taller. */
+        .print-slot { flex: 1; min-height: 0; display: flex; justify-content: center; align-items: flex-start; }
+        .print-note {
+            font-size: 10pt; line-height: 1.45; white-space: pre-wrap; color: var(--gray-800);
+            border-left: 3px solid var(--accent); background: var(--gray-50); padding: 3mm 4mm; border-radius: 0 2mm 2mm 0;
+        }
+        .print-foot { display: flex; justify-content: space-between; gap: 6mm; font-size: 8pt; color: var(--gray-500); }
+
+        @page { size: A4 portrait; margin: 0; }
+        @media print {
+            body { background: #fff; }
+            body > header, body > main { display: none !important; }
+            #print-root { display: block; }
+            * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
     </style>
 </head>
 <body>
@@ -430,14 +499,17 @@
         <div id="inspector-body" class="muted">No run.</div>
     </section>
     <section id="log-panel" class="panel">
+        <h2>Basket</h2>
+        <div id="basket"></div>
         <h2>Run</h2>
         <div id="run-info" class="muted">No run.</div>
         <h2>App &amp; SDK log</h2>
         <div id="log"></div>
     </section>
 </main>
+<div id="print-root"></div>
 <script>
-    const state = {app: null, view: null, ui: null, language: 'de'};
+    const state = {app: null, view: null, ui: null, language: 'de', basket: []};
     try {
         state.language = localStorage.getItem('enyo.sim.lang') || 'de';
     } catch {
@@ -789,7 +861,7 @@
             }
             case 'select': {
                 const help = t(block.help);
-                return el('div', {class: 'app-field'}, [
+                return el('div', {class: 'app-field step-input'}, [
                     el('label', {class: 'app-label'}, [t(block.label), block.required ? el('span', {class: 'req', text: ' *'}) : null]),
                     aSelect(
                         state.ui.selectValues[block.id],
@@ -1170,13 +1242,18 @@
     const renderStepScreen = (view, model) => {
         const content = model.step.blocks.filter(block => !DECISION_TYPES.includes(block.type));
         const title = t(model.step.title);
+        // The step's input is tagged so the basket can leave it out of a screen copy.
+        const inputParts = [...renderInputBody(view, model), model.input.kind === 'picker' ? renderPicker(view, model) : null]
+            .filter(Boolean);
+        inputParts.forEach(part => part.classList.add('step-input'));
+        const picker = model.input.kind === 'picker' ? inputParts.pop() : null;
         const scroll = el('div', {class: 'app-scroll'}, [
             el('div', {class: 'app-col'}, [
                 title ? el('h1', {class: 'app-title', text: title}) : null,
                 ...content.map(renderContentBlock),
-                ...renderInputBody(view, model),
+                ...inputParts,
             ]),
-            model.input.kind === 'picker' ? renderPicker(view, model) : null,
+            picker,
         ]);
         return [renderTopBar(view, model), scroll, renderFooter(view, model)];
     };
@@ -1321,6 +1398,8 @@
             el('div', {class: 'row'}, [
                 el('button', {class: 'tool', disabled: !model.canGoBack, onclick: () => goBack(view)}, 'Back'),
                 el('button', {class: 'tool', onclick: () => resetRun(view)}, 'Restart'),
+                el('button', {class: 'tool dark', title: 'Keep a copy of the screen as it looks now, for the PDF', onclick: () => addToBasket(view)},
+                    'Add to basket'),
             ]),
             el('div', {style: 'margin-top:10px'}, [
                 el('span', {class: 'badge', text: view.context.variant}),
@@ -1496,6 +1575,169 @@
         );
     };
 
+    // ---- basket: screens collected for the PDF -------------------------------
+    const BASKET_KEY = 'enyo.sim.basket.v2';
+    const loadBasket = () => {
+        try {
+            return JSON.parse(sessionStorage.getItem(BASKET_KEY) || '[]');
+        } catch {
+            return [];
+        }
+    };
+    const saveBasket = () => {
+        try {
+            sessionStorage.setItem(BASKET_KEY, JSON.stringify(state.basket));
+        } catch {
+            // Storage off or full: the basket still lives as long as the page does.
+        }
+    };
+
+    /**
+     * What the step on screen says, as markup: its content only. The phone frame,
+     * the top bar (back, progress, support), the footer buttons and everything
+     * the installer fills in or taps — inputs, choices, pickers, copy and zoom
+     * buttons — are left out, as is the full-screen image viewer.
+     */
+    const SNAPSHOT_STRIP = [
+        '.app-topbar', '.app-footer', '.step-input', '.viewer',
+        'input', 'textarea', 'select', '.a-select-wrap', '.running', '.spinner',
+        'button.a-btn', 'button.text-link', '.icon-btn', '.image-block .zoom',
+    ].join(', ');
+    const snapshotDevice = () => {
+        const device = document.querySelector('#stage .device');
+        if (!device) return null;
+        const copy = device.cloneNode(true);
+        copy.querySelectorAll(SNAPSHOT_STRIP).forEach(node => node.remove());
+        copy.className = 'print-screen';
+        copy.removeAttribute('style');
+        return copy.outerHTML;
+    };
+
+    const TERMINAL_TITLES = {success: 'Success', support: 'Handed to support', pause: 'Paused', 'start-variant': 'Hand-off'};
+
+    const addToBasket = view => {
+        const html = snapshotDevice();
+        if (!html) return;
+        const model = view.renderModel;
+        const terminal = model.isTerminal ? (model.terminal || {}) : null;
+        state.basket.push({
+            id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+            html,
+            packageName: state.app ? state.app.packageName : '',
+            guideName: view.guide.name,
+            guideTitle: t(view.guide.title) || view.guide.name,
+            variant: view.context.variant,
+            stepName: model.step ? model.step.name : 'exit: ' + (terminal && terminal.type),
+            stepTitle: model.step ? t(model.step.title) : TERMINAL_TITLES[terminal && terminal.type] || '',
+            language: state.language,
+            note: '',
+            at: new Date().toISOString(),
+        });
+        saveBasket();
+        renderBasket();
+    };
+
+    const changeBasket = mutate => {
+        mutate(state.basket);
+        saveBasket();
+        renderBasket();
+    };
+    const moveInBasket = (index, delta) => changeBasket(basket => {
+        const target = index + delta;
+        if (target < 0 || target >= basket.length) return;
+        basket.splice(target, 0, ...basket.splice(index, 1));
+    });
+
+    /** A stored screen, put back as inert markup — nothing in it reacts to clicks. */
+    const frozen = (html, className) => {
+        const box = el('div', {class: className, inert: true});
+        box.innerHTML = html;
+        return box;
+    };
+
+    const renderBasket = () => {
+        const basket = state.basket;
+        const items = basket.map((entry, index) => el('div', {class: 'basket-item'}, [
+            frozen(entry.html, 'basket-thumb'),
+            el('div', {class: 'basket-body'}, [
+                el('div', {class: 'title', text: `${index + 1}. ${entry.stepTitle || entry.stepName}`}),
+                el('div', {class: 'mono muted truncate', title: `${entry.guideName} · ${entry.stepName}`, text: `${entry.guideName} · ${entry.stepName}`}),
+                el('textarea', {
+                    placeholder: 'Note for this page (optional)',
+                    text: entry.note,
+                    oninput: event => {
+                        entry.note = event.target.value;
+                        saveBasket();
+                    },
+                }),
+                el('div', {class: 'row'}, [
+                    el('button', {class: 'tool', title: 'Move up', disabled: index === 0, onclick: () => moveInBasket(index, -1)}, '↑'),
+                    el('button', {class: 'tool', title: 'Move down', disabled: index === basket.length - 1, onclick: () => moveInBasket(index, 1)}, '↓'),
+                    el('button', {class: 'tool', onclick: () => changeBasket(list => list.splice(index, 1))}, 'Remove'),
+                ]),
+            ]),
+        ]));
+        document.getElementById('basket').replaceChildren(
+            ...(items.length
+                ? items
+                : [el('div', {class: 'muted', text: '„Add to basket" in the Simulator panel keeps the screen as it looks now. Print the basket as an A4 PDF, one screen per page.'})]),
+            el('div', {class: 'row', style: 'margin-top:10px'}, [
+                el('button', {class: 'tool dark', disabled: !basket.length, onclick: () => printBasket().catch(fail)},
+                    `Print PDF (${basket.length} ${basket.length === 1 ? 'page' : 'pages'})`),
+                el('button', {class: 'tool', disabled: !basket.length, onclick: () => changeBasket(list => list.splice(0))}, 'Clear'),
+            ]),
+        );
+    };
+
+    /**
+     * Lay the basket out as A4 pages and hand them to the browser's print
+     * dialog — "Save as PDF" there is the export. The pages are measured first,
+     * so a step taller than its page is zoomed down to fit rather than cut off.
+     */
+    const printBasket = async () => {
+        const root = document.getElementById('print-root');
+        const total = state.basket.length;
+        const printedAt = new Date().toLocaleString();
+        root.replaceChildren(...state.basket.map((entry, index) => el('section', {class: 'print-page'}, [
+            el('div', {class: 'print-head'}, [
+                el('div', {class: 'print-main'}, [
+                    el('div', {class: 'print-kicker', text: [entry.packageName, entry.variant].filter(Boolean).join(' · ')}),
+                    el('div', {class: 'print-guide', text: entry.guideTitle}),
+                    el('div', {class: 'print-step', text: entry.stepTitle || entry.stepName}),
+                ]),
+                el('div', {class: 'print-count'}, [el('strong', {text: String(index + 1)}), `of ${total}`]),
+            ]),
+            frozen(entry.html, 'print-slot'),
+            entry.note.trim() ? el('div', {class: 'print-note', text: entry.note.trim()}) : null,
+            el('div', {class: 'print-foot'}, [
+                el('span', {class: 'mono', text: `${entry.guideName} · ${entry.stepName} · ${entry.language}`}),
+                el('span', {text: `enyo onboarding simulator · ${printedAt}`}),
+            ]),
+        ])));
+
+        root.classList.add('measuring');
+        await document.fonts.ready;
+        await Promise.all(Array.from(root.querySelectorAll('img')).map(img => img.decode().catch(() => undefined)));
+        root.querySelectorAll('.print-slot').forEach(slot => {
+            const device = slot.firstElementChild;
+            if (!device) return;
+            const zoom = Math.min(1, slot.clientHeight / device.offsetHeight, slot.clientWidth / device.offsetWidth);
+            if (zoom < 1) device.style.zoom = String(zoom);
+        });
+        root.classList.remove('measuring');
+
+        // The browser offers the document title as the PDF's file name.
+        const guides = new Set(state.basket.map(entry => entry.guideName));
+        const title = document.title;
+        document.title = [state.basket[0].packageName, guides.size === 1 ? [...guides][0] : null, 'onboarding']
+            .filter(Boolean).join('-');
+        window.addEventListener('afterprint', () => {
+            document.title = title;
+            root.replaceChildren();
+        }, {once: true});
+        window.print();
+    };
+
     // ---- log --------------------------------------------------------------
     const appendLog = event => {
         const log = document.getElementById('log');
@@ -1533,6 +1775,8 @@
         document.getElementById('inspector-body').replaceChildren(document.createTextNode('No run.'));
         await loadApp();
     });
+    state.basket = loadBasket();
+    renderBasket();
     new EventSource('/api/log').onmessage = event => appendLog(JSON.parse(event.data));
     loadApp().catch(error => {
         document.getElementById('stage').replaceChildren(el('div', {class: 'empty', text: error.message}));
