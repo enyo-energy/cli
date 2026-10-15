@@ -110,6 +110,9 @@ export const createSimulatorServer = (options: SimulatorServerOptions): Express 
                 defaultContext: defaultContextFor(variant),
             })),
             files: app.files.map(file => ({name: file.name, mimeType: file.mimeType})),
+            // Listed apart from `variants`: the host never offers it. Walk it with
+            // `guideIndex: PACKAGE_GUIDE_INDEX`.
+            packageGuide: store.packageGuideSummary() ?? null,
         });
     });
 
@@ -119,7 +122,8 @@ export const createSimulatorServer = (options: SimulatorServerOptions): Express 
         options.log.push({
             at: options.log.elapsed(),
             kind: 'sim',
-            message: `Reloaded ${reloaded.packageName}: ${reloaded.guides.length} guide(s), answer '${reloaded.answer}'`,
+            message: `Reloaded ${reloaded.packageName}: ${reloaded.guides.length} guide(s), answer '${reloaded.answer}'` +
+                (reloaded.packageGuide ? ', plus the manual setup guide (pre-app onboarding)' : ''),
         });
         response.json({ok: true});
     }));

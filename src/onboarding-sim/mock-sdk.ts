@@ -574,6 +574,7 @@ export const createMockSdk = (options: Partial<MockSdkOptions> = {}): MockSdk =>
         useGridFee: packageAccessor('useGridFee'),
         useCommandLog: packageAccessor('useCommandLog'),
         useCalibration: packageAccessor('useCalibration'),
+        useCascade: packageAccessor('useCascade'),
     };
 
     return {instance, state, options: config};

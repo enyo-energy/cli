@@ -19,6 +19,7 @@ import {
     EnyoOnboardingV2GuidesOriginEnum,
     validateOnboardingGuideV2,
     validateOnboardingV2GuidesResult,
+    validatePackageOnboardingGuide,
 } from '@enyo-energy/energy-app-sdk';
 import type {
     EnergyAppPackageDefinition,
@@ -58,6 +59,13 @@ export interface LoadedApp {
     entryPath: string;
     /** Public files declared in the package definition — image blocks resolve against these. */
     files: EnergyAppPackagePublicFile[];
+    /**
+     * The static manual setup guide the package definition declares, for
+     * pre-app onboarding. Not one of `guides`: the host never offers it and the
+     * app's handler never returns it, so it is kept and validated on its own —
+     * with the same checks `enyo release` runs.
+     */
+    packageGuide?: PackageGuide;
     mock: MockSdk;
     guides: EnyoOnboardingV2Guide[];
     answer: GuidesAnswer;
@@ -74,6 +82,24 @@ export interface LoadedApp {
 }
 
 type EnergyAppPackagePublicFile = NonNullable<EnergyAppPackageDefinition['files']>[number];
+
+export interface PackageGuide {
+    guide: EnyoOnboardingV2Guide;
+    validation: { ok: boolean; errors: string[]; warnings: string[] };
+}
+
+/**
+ * The package's static guide with the SDK's release-time verdict, or nothing
+ * when the definition declares none. Read from the config, not the bundle, so
+ * it is there even when the app never answers for its runtime guides.
+ */
+export const readPackageGuide = (config?: EnergyAppPackageDefinition): PackageGuide | undefined => {
+    if (!config?.onboardingGuide) {
+        return undefined;
+    }
+    const {ok, errors, warnings} = validatePackageOnboardingGuide(config);
+    return {guide: config.onboardingGuide, validation: {ok, errors, warnings}};
+};
 
 export interface LoadEnergyAppOptions {
     /** Directory the app lives in; `dist/index.js` is resolved against it. */
@@ -285,6 +311,7 @@ export const loadEnergyApp = async (options: LoadEnergyAppOptions = {}): Promise
         cwd,
         entryPath,
         files,
+        packageGuide: readPackageGuide(options.config),
         mock,
         guides: [],
         answer: 'no-handler',

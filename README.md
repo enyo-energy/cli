@@ -56,6 +56,20 @@ when promoting the same build to another channel.
 With several `*.package.ts` files, an unchanged one is skipped and the others are still
 released; the command reports which were skipped and exits non-zero.
 
+### Manual setup guide (`onboardingGuide`)
+
+A package can declare one static onboarding v2 guide in its definition, used for
+pre-app onboarding; it is not one of the guides your app returns at
+runtime, and the host never offers it. Before anything reaches the registry the CLI
+checks it with the SDK's `validatePackageOnboardingGuide()` and aborts on errors:
+`startVariant: 'manual-setup'`, an explicit `requiresNetworkScan: false`, no scans,
+device pickers, device tests or dynamic blocks, no `start-variant` targets, no
+`applianceId` / `vendorId` / `modelIds`, plain JSON only, and every image block's `file`
+declared in `files`. The guide is part of the package definition fingerprint, so a
+release that only changes the guide is not refused as unchanged.
+
+Walk it before you release with `enyo onboarding-sim` (see below).
+
 ## Onboarding v2 simulator
 Walk your app's onboarding v2 guides in a browser, without a device:
 
@@ -116,6 +130,11 @@ variant (`device-not-found`, `device-found-config`, `manual-setup`, `maintenance
 - Every guide is checked with the SDK's own validators, and the answer's `null` vs `[]`
   distinction is called out — an empty array retires every guide the host cached.
 - The right-hand panel streams your app's console output and every SDK call it made.
+- **Manual setup guide (pre-app onboarding)**: a package that declares an `onboardingGuide` gets it
+  listed in its own section below the start variants — apart from the runtime guides,
+  because the host never offers it. Its card carries the same errors `enyo release`
+  would refuse it for, and it walks like any other guide, so you can check each branch. The definition is read once at start; restart the
+  simulator after editing the guide („Reload app" only re-runs the bundle).
 - **Basket → PDF**: „Add to basket" keeps a copy of the screen as it looks right now,
   typed values included. Collect screens from any guide, reorder them, add a note per
   page, then „Print PDF" lays them out on A4 — one screen per page, with the guide,

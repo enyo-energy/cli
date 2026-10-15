@@ -13,7 +13,8 @@ import {
 } from '@enyo-energy/energy-app-sdk';
 import {loadEnergyApp, type LoadedApp} from './app-loader.js';
 import {SIMULATED_EEBUS_PEERS} from './simulated-world.js';
-import {RunStore, START_VARIANTS, defaultContextFor} from './run-store.js';
+import {PACKAGE_GUIDE_INDEX, RunStore, START_VARIANTS, defaultContextFor} from './run-store.js';
+import {readEnyoPackageConfig} from '../utils/file-utils.js';
 
 const fixtureDir = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
@@ -55,6 +56,61 @@ describe('loadEnergyApp', () => {
         assert.deepEqual(app.validation.result.errors, []);
         assert.deepEqual(app.validation.result.warnings, []);
         assert.equal(app.validation.guides.length, 5);
+    });
+});
+
+describe('the package\'s static manual setup guide', () => {
+    let app: LoadedApp;
+    let store: RunStore;
+    before(async () => {
+        const config = await readEnyoPackageConfig(path.join(fixtureDir, 'energy-app.package.ts'));
+        app = await loadEnergyApp({cwd: fixtureDir, config});
+        store = new RunStore(app);
+    });
+
+    it('is read from the definition and validated with the release checks', () => {
+        assert.ok(app.packageGuide);
+        assert.deepEqual(app.packageGuide.validation, {ok: true, errors: [], warnings: []});
+    });
+
+    it('stays out of the runtime guides the host would offer', () => {
+        assert.equal(app.guides.length, 5);
+        assert.ok(store.summaries().every(guide => guide.index !== PACKAGE_GUIDE_INDEX));
+        assert.equal(store.packageGuideSummary()?.index, PACKAGE_GUIDE_INDEX);
+    });
+
+    it('is walkable down each branch, and never hands off', async () => {
+        const run = store.createRun(PACKAGE_GUIDE_INDEX);
+        store.answer(run.id, {kind: EnyoOnboardingV2TransitionSourceKind.Continue});
+        store.answer(run.id, {
+            kind: EnyoOnboardingV2TransitionSourceKind.Outcome,
+            blockId: 'device-ip',
+            outcomeId: 'unreachable',
+        });
+        assert.equal((await store.view(run.id)).step?.id, 'prepare');
+
+        store.answer(run.id, {kind: EnyoOnboardingV2TransitionSourceKind.Continue});
+        store.answer(run.id, {
+            kind: EnyoOnboardingV2TransitionSourceKind.Outcome,
+            blockId: 'device-ip',
+            outcomeId: 'ok',
+        });
+        const view = await store.view(run.id);
+        assert.equal(view.guide.index, PACKAGE_GUIDE_INDEX);
+        assert.equal(view.terminal?.type, EnyoOnboardingV2TargetType.Success);
+        assert.equal(view.handoffGuideIndex, undefined);
+    });
+
+    it('reports what enyo release would refuse', async () => {
+        const config = await readEnyoPackageConfig(path.join(fixtureDir, 'energy-app.package.ts'));
+        const {requiresNetworkScan: _flag, ...guide} = config.onboardingGuide!;
+        const broken = await loadEnergyApp({cwd: fixtureDir, config: {...config, onboardingGuide: guide}});
+        assert.equal(broken.packageGuide?.validation.ok, false);
+        assert.ok(broken.packageGuide?.validation.errors.length);
+    });
+
+    it('is absent when the definition declares none', () => {
+        assert.equal(new RunStore({...app, packageGuide: undefined}).packageGuideSummary(), undefined);
     });
 });
 

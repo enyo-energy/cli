@@ -488,6 +488,8 @@
     <section id="library" class="panel">
         <h2>Guides by start variant</h2>
         <div id="variants"></div>
+        <h2>Manual setup guide (pre-app onboarding)</h2>
+        <div id="package-guide"></div>
         <h2>Answer</h2>
         <div id="answer-info" class="muted"></div>
     </section>
@@ -639,6 +641,56 @@
     };
 
     // ---- library ----------------------------------------------------------
+    /** The run index the API gives the package's static guide — never a runtime guide's. */
+    const PACKAGE_GUIDE_INDEX = -1;
+    const isPackageGuide = guide => guide && guide.index === PACKAGE_GUIDE_INDEX;
+
+    /** One guide card: what the guide is, its badges and the SDK's verdict. */
+    const guideCard = (guide, extraBadges = []) => {
+        const validation = guide.validation || {ok: true, errors: [], warnings: []};
+        const active = state.view && state.view.guide.index === guide.index;
+        return el('div', {
+            class: 'guide' + (active ? ' active' : ''),
+            onclick: () => startRun(guide.index),
+        }, [
+            el('div', {class: 'title', text: t(guide.title) || guide.name}),
+            el('div', {class: 'mono muted', text: guide.name}),
+            el('div', {style: 'margin-top:6px'}, [
+                el('span', {class: 'badge', text: guide.stepCount + (guide.stepCount === 1 ? ' step' : ' steps')}),
+                guide.requiresNetworkScan ? el('span', {class: 'badge', text: 'scan first'}) : null,
+                guide.applianceId ? el('span', {class: 'badge', text: 'appliance ' + guide.applianceId}) : null,
+                ...extraBadges,
+                validation.errors.length
+                    ? el('span', {class: 'badge err', text: validation.errors.length + ' errors'})
+                    : null,
+                validation.warnings.length
+                    ? el('span', {class: 'badge warn', text: validation.warnings.length + ' warnings'})
+                    : null,
+            ]),
+            validation.errors.length || validation.warnings.length
+                ? el('details', {style: 'margin-top:6px'}, [
+                    el('summary', {text: 'Validation'}),
+                    el('div', {class: 'mono', text: [...validation.errors, ...validation.warnings].join('\n')}),
+                ])
+                : null,
+        ]);
+    };
+
+    /**
+     * The static guide from the package definition. Listed apart from the
+     * variants because the host never offers it: it is for pre-app onboarding,
+     * and its errors are the ones `enyo release` refuses.
+     */
+    const renderPackageGuide = () => {
+        const guide = state.app.packageGuide;
+        document.getElementById('package-guide').replaceChildren(guide
+            ? guideCard(guide, [
+                el('span', {class: 'badge ' + (guide.validation.ok ? 'ok' : 'err'),
+                    text: guide.validation.ok ? 'releasable' : 'release refused'}),
+            ])
+            : el('div', {class: 'empty', text: 'The package definition declares no onboardingGuide.'}));
+    };
+
     const renderLibrary = () => {
         const container = document.getElementById('variants');
         container.replaceChildren();
@@ -647,36 +699,10 @@
             if (entry.guides.length === 0) {
                 box.appendChild(el('div', {class: 'empty', text: 'The app ships no guide for this variant.'}));
             }
-            entry.guides.forEach(guide => {
-                const validation = guide.validation || {ok: true, errors: [], warnings: []};
-                const active = state.view && state.view.guide.index === guide.index;
-                box.appendChild(el('div', {
-                    class: 'guide' + (active ? ' active' : ''),
-                    onclick: () => startRun(guide.index),
-                }, [
-                    el('div', {class: 'title', text: t(guide.title) || guide.name}),
-                    el('div', {class: 'mono muted', text: guide.name}),
-                    el('div', {style: 'margin-top:6px'}, [
-                        el('span', {class: 'badge', text: guide.stepCount + (guide.stepCount === 1 ? ' step' : ' steps')}),
-                        guide.requiresNetworkScan ? el('span', {class: 'badge', text: 'scan first'}) : null,
-                        guide.applianceId ? el('span', {class: 'badge', text: 'appliance ' + guide.applianceId}) : null,
-                        validation.errors.length
-                            ? el('span', {class: 'badge err', text: validation.errors.length + ' errors'})
-                            : null,
-                        validation.warnings.length
-                            ? el('span', {class: 'badge warn', text: validation.warnings.length + ' warnings'})
-                            : null,
-                    ]),
-                    validation.errors.length || validation.warnings.length
-                        ? el('details', {style: 'margin-top:6px'}, [
-                            el('summary', {text: 'Validation'}),
-                            el('div', {class: 'mono', text: [...validation.errors, ...validation.warnings].join('\n')}),
-                        ])
-                        : null,
-                ]));
-            });
+            entry.guides.forEach(guide => box.appendChild(guideCard(guide)));
             container.appendChild(box);
         });
+        renderPackageGuide();
         const answerLabels = {
             guides: 'The app returned its guides.',
             empty: 'The app returned an EMPTY array — on a device that retires every guide it had cached. Return null instead when you mean "not answering right now".',
@@ -1407,6 +1433,9 @@
                 view.context.eebusSki ? el('span', {class: 'badge', text: 'ski ' + view.context.eebusSki.slice(0, 8) + '…'}) : null,
                 view.context.applianceId ? el('span', {class: 'badge', text: 'appliance ' + view.context.applianceId}) : null,
             ]),
+            isPackageGuide(view.guide)
+                ? note('The manual setup guide from the package definition, for pre-app onboarding. Walk each outcome to check every branch.')
+                : null,
             model.step ? note(`Step ${model.step.name} · ${model.progress.position} walked · progress ${model.progress.position}/${model.progress.total}`) : null,
             state.handedOffFrom ? note(`Handed off from ${state.handedOffFrom}: the app follows a start-variant exit into the next guide on its own.`) : null,
         ]));

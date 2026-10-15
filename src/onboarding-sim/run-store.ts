@@ -238,6 +238,13 @@ export interface RunView {
     renderModel: RenderModel;
 }
 
+/**
+ * The run index of the package's static manual setup guide. It sits outside
+ * `app.guides` on purpose: the host never offers it, so it must never be found
+ * by a hand-off or listed among the app's runtime guides.
+ */
+export const PACKAGE_GUIDE_INDEX = -1;
+
 /** The five start variants, in the order the UI lists them. */
 export const START_VARIANTS: EnyoOnboardingV2StartVariant[] = [
     EnyoOnboardingV2StartVariant.DeviceNotFound,
@@ -311,6 +318,28 @@ const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number): Promise<T
     }
 };
 
+const summarize = (
+    guide: EnyoOnboardingV2Guide,
+    index: number,
+    name: string,
+    validation: GuideValidation | undefined
+): GuideSummary => ({
+    index,
+    name,
+    startVariant: guide.startVariant,
+    title: guide.title,
+    summary: guide.summary,
+    iconKey: guide.iconKey,
+    // Defaults to true — the historic behaviour, and the right one for a
+    // LAN device.
+    requiresNetworkScan: guide.requiresNetworkScan !== false,
+    applianceId: guide.applianceId,
+    vendorId: guide.vendorId,
+    modelIds: guide.modelIds,
+    stepCount: guide.steps.length,
+    validation,
+});
+
 export class RunStore {
     private readonly runs = new Map<string, SimRun>();
     private readonly startedAt = Date.now();
@@ -328,31 +357,39 @@ export class RunStore {
     }
 
     guideAt(index: number): EnyoOnboardingV2Guide | undefined {
-        return this.app.guides[index];
+        return index === PACKAGE_GUIDE_INDEX ? this.app.packageGuide?.guide : this.app.guides[index];
     }
 
     /** Every guide the app ships, described for the library screen. */
     summaries(): GuideSummary[] {
-        return this.app.guides.map((guide, index) => ({
-            index,
-            name: guide.name ?? `guide-${index + 1}`,
-            startVariant: guide.startVariant,
-            title: guide.title,
-            summary: guide.summary,
-            iconKey: guide.iconKey,
-            // Defaults to true — the historic behaviour, and the right one for a
-            // LAN device.
-            requiresNetworkScan: guide.requiresNetworkScan !== false,
-            applianceId: guide.applianceId,
-            vendorId: guide.vendorId,
-            modelIds: guide.modelIds,
-            stepCount: guide.steps.length,
-            validation: this.app.validation.guides[index],
-        }));
+        return this.app.guides.map((guide, index) =>
+            summarize(guide, index, guide.name ?? `guide-${index + 1}`, this.app.validation.guides[index])
+        );
+    }
+
+    /** The package's static manual setup guide, when it declares one. */
+    packageGuideSummary(): GuideSummary | undefined {
+        const declared = this.app.packageGuide;
+        if (!declared) {
+            return undefined;
+        }
+        // `name` has no meaning on the static guide, so it is usually absent.
+        return summarize(declared.guide, PACKAGE_GUIDE_INDEX, declared.guide.name ?? 'pre-app-onboarding', {
+            guideName: declared.guide.name ?? 'pre-app-onboarding',
+            ...declared.validation,
+        });
+    }
+
+    private summaryAt(index: number): GuideSummary {
+        const summary = index === PACKAGE_GUIDE_INDEX ? this.packageGuideSummary() : this.summaries()[index];
+        if (!summary) {
+            throw new Error(`No guide at index ${index}`);
+        }
+        return summary;
     }
 
     createRun(guideIndex: number, context?: Partial<RunContext>): SimRun {
-        const guide = this.app.guides[guideIndex];
+        const guide = this.guideAt(guideIndex);
         if (!guide) {
             throw new Error(`No guide at index ${guideIndex}`);
         }
@@ -990,14 +1027,15 @@ export class RunStore {
 
         return {
             runId: run.id,
-            guide: this.summaries()[run.guideIndex],
+            guide: this.summaryAt(run.guideIndex),
             context: run.context,
             status: walk.status,
             step: walk.status === 'terminal' ? undefined : step,
             decisionBlockId: walk.status === 'terminal' ? undefined : decision?.id,
             suggestedHandleId: suggested,
             terminal: walk.terminal,
-            handoffGuideIndex: handoffVariant
+            // The static guide never hands off to a runtime guide.
+            handoffGuideIndex: handoffVariant && run.guideIndex !== PACKAGE_GUIDE_INDEX
                 ? this.app.guides.findIndex(candidate => candidate.startVariant === handoffVariant)
                 : undefined,
             visited: walk.visited,
@@ -1013,7 +1051,7 @@ export class RunStore {
     }
 
     private guideOf(run: SimRun): EnyoOnboardingV2Guide {
-        const guide = this.app.guides[run.guideIndex];
+        const guide = this.guideAt(run.guideIndex);
         if (!guide) {
             throw new Error(`The guide of run ${run.id} is gone — the app was reloaded`);
         }

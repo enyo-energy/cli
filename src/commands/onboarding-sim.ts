@@ -71,6 +71,26 @@ const describeAnswer = (app: LoadedApp): string => {
     }
 };
 
+/**
+ * The static manual setup guide from the package definition. Printed apart from
+ * the runtime guides because it is not one: it is for pre-app onboarding and
+ * the host never offers it. Its errors are the ones `enyo release` would refuse.
+ */
+const printPackageGuide = (app: LoadedApp): void => {
+    if (!app.packageGuide) {
+        return;
+    }
+    const {guide, validation} = app.packageGuide;
+    const steps = guide.steps.length;
+    console.log(`📄 Manual setup guide (pre-app onboarding): ${steps} ${steps === 1 ? 'step' : 'steps'}${validation.ok ? '' : ' — enyo release would refuse it'}`);
+    for (const error of validation.errors) {
+        console.log(`❌ Manual setup guide: ${error}`);
+    }
+    for (const warning of validation.warnings) {
+        console.log(`⚠️  Manual setup guide: ${warning}`);
+    }
+};
+
 const printSummary = (app: LoadedApp): void => {
     console.log(`📦 ${app.packageName} — loaded ${path.relative(app.cwd, app.entryPath)}`);
     console.log(`📖 Guides: ${describeAnswer(app)}`);
@@ -91,6 +111,8 @@ const printSummary = (app: LoadedApp): void => {
     for (const warning of warnings) {
         console.log(`⚠️  ${warning}`);
     }
+
+    printPackageGuide(app);
 
     if (app.answer === 'guides' && errors.length === 0) {
         const missing = START_VARIANTS.filter(

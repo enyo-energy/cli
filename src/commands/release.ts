@@ -21,6 +21,7 @@ import {
     uploadPublicFiles,
     validatePublicFilesDeclaration
 } from '../utils/public-files.js';
+import {validateOnboardingGuideDeclaration} from '../utils/onboarding-guide.js';
 import {hashDirectoryContents, hashReleaseDefinition} from '../utils/fingerprint.js';
 import {DEFAULT_REGISTRY_URL, FILE_NAMES} from '../constants/defaults.js';
 import type {
@@ -149,16 +150,21 @@ const collectConfigs = async (
  *
  * The fingerprints are built here rather than at upload time because they are
  * what decides whether the upload happens at all.
+ *
+ * Exported for testing.
  */
-const prepareRelease = async (
+export const prepareRelease = async (
     config: EnergyAppPackageDefinition,
     channel: 'production' | 'staging',
     configFile?: string
 ): Promise<PreparedRelease> => {
     // Everything that can fail locally runs before the release is created, so a
-    // broken firmware or file declaration never reaches the registry.
+    // broken firmware, file or guide declaration never reaches the registry.
+    // The guide check resolves image names against `files` but not against the
+    // disk, so the files check and `preparePublicFiles()` must still run too.
     validateFirmwareDeclaration(config);
     validatePublicFilesDeclaration(config);
+    validateOnboardingGuideDeclaration(config);
 
     const packageRoot = configFile ? path.dirname(path.resolve(configFile)) : process.cwd();
     const firmware = await prepareFirmwareFiles(config, packageRoot);
@@ -178,6 +184,13 @@ const prepareRelease = async (
         for (const file of files) {
             console.log(`   • ${file.name} → ${file.fileName} (sha256 ${file.sha256.substring(0, 12)}…)`);
         }
+    }
+
+    // Sent as is: the payload spreads the whole config, and so does the
+    // definition hash, so a release that only edits the guide is not a duplicate.
+    if (config.onboardingGuide) {
+        const steps = config.onboardingGuide.steps.length;
+        console.log(`📄 Manual setup guide declared (${steps} ${steps === 1 ? 'step' : 'steps'}) — for pre-app onboarding`);
     }
 
     const uploadLogo = getLogoChecksum(config);
