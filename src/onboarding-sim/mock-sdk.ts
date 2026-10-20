@@ -575,6 +575,8 @@ export const createMockSdk = (options: Partial<MockSdkOptions> = {}): MockSdk =>
         useCommandLog: packageAccessor('useCommandLog'),
         useCalibration: packageAccessor('useCalibration'),
         useCascade: packageAccessor('useCascade'),
+        useWebhook: packageAccessor('useWebhook'),
+        useSubscriptions: packageAccessor('useSubscriptions'),
     };
 
     return {instance, state, options: config};

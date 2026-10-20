@@ -70,6 +70,28 @@ release that only changes the guide is not refused as unchanged.
 
 Walk it before you release with `enyo onboarding-sim` (see below).
 
+### Subscription plans (`subscriptionPlans`)
+
+A package can declare paid plans (SDK ≥ 1.36); enyo sells them from the release on —
+the app's offer screen, checkout and renewals. Before anything reaches the registry the
+CLI checks them with the SDK's `validatePackageSubscriptionPlans()` — the same check the
+API runs — and aborts on errors: unique kebab-case `planKey`s, at least one positive net
+price per plan with at most two decimals and one price per currency, a positive whole
+`trialDays` and none on a `one-time` plan, a `de` and an `en` store entry with `title`
+and `shortDescription`, and the `Subscriptions` permission. The release then lists each
+plan, e.g. `💳 premium — yearly, 83.19 EUR net, 30 days trial`.
+
+- **Prices are net** (`amountWithoutTax`). Customers are shown gross, i.e. +19 % VAT.
+- **Plans are sold per hub** (device): each purchase covers the app on one device.
+- **Per-unit plans** (`pricingModel: 'per-unit'`) are billed per unit the app reports at
+  runtime with `useSubscriptions().setUnits()`, and cannot be bought before the app has
+  reported one.
+- **Dropping all plans** in a later release makes the app free for new purchases;
+  existing subscriptions keep running.
+
+Plans are part of the package definition fingerprint, so a release that only changes a
+price is not refused as unchanged. A price change applies to new purchases only.
+
 ## Onboarding v2 simulator
 Walk your app's onboarding v2 guides in a browser, without a device:
 

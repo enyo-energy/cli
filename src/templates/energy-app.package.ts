@@ -34,4 +34,22 @@ export default defineEnergyAppPackage({
     //         },
     //     ],
     // }),
+    // Optional: paid plans enyo sells for this app (offer screen, checkout,
+    // renewals). Prices are net — customers see gross. Plans require the
+    // Subscriptions permission; `enyo release` validates them and aborts on errors.
+    // Needs EnergyAppPermissionTypeEnum, EnyoSubscriptionPaymentIntervalEnum,
+    // EnyoSubscriptionPricingModelEnum and EnyoCurrencyEnum imported from the SDK.
+    //
+    // permissions: [EnergyAppPermissionTypeEnum.Subscriptions, ...],
+    // subscriptionPlans: [{
+    //     planKey: 'premium',
+    //     paymentInterval: EnyoSubscriptionPaymentIntervalEnum.Yearly,
+    //     pricingModel: EnyoSubscriptionPricingModelEnum.PerPackage, // or PerUnit (billed per reported vehicle/device)
+    //     prices: [{amountWithoutTax: 83.19, currency: EnyoCurrencyEnum.EUR}],
+    //     trialDays: 30,
+    //     storeEntry: [
+    //         {language: 'de', title: 'Premium', shortDescription: '…', benefits: ['…']},
+    //         {language: 'en', title: 'Premium', shortDescription: '…', benefits: ['…']},
+    //     ],
+    // }],
 })

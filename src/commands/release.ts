@@ -22,6 +22,7 @@ import {
     validatePublicFilesDeclaration
 } from '../utils/public-files.js';
 import {validateOnboardingGuideDeclaration} from '../utils/onboarding-guide.js';
+import {describeSubscriptionPlan, validateSubscriptionPlansDeclaration} from '../utils/subscription-plans.js';
 import {hashDirectoryContents, hashReleaseDefinition} from '../utils/fingerprint.js';
 import {DEFAULT_REGISTRY_URL, FILE_NAMES} from '../constants/defaults.js';
 import type {
@@ -159,12 +160,13 @@ export const prepareRelease = async (
     configFile?: string
 ): Promise<PreparedRelease> => {
     // Everything that can fail locally runs before the release is created, so a
-    // broken firmware, file or guide declaration never reaches the registry.
+    // broken firmware, file, guide or plan declaration never reaches the registry.
     // The guide check resolves image names against `files` but not against the
     // disk, so the files check and `preparePublicFiles()` must still run too.
     validateFirmwareDeclaration(config);
     validatePublicFilesDeclaration(config);
     validateOnboardingGuideDeclaration(config);
+    validateSubscriptionPlansDeclaration(config);
 
     const packageRoot = configFile ? path.dirname(path.resolve(configFile)) : process.cwd();
     const firmware = await prepareFirmwareFiles(config, packageRoot);
@@ -191,6 +193,15 @@ export const prepareRelease = async (
     if (config.onboardingGuide) {
         const steps = config.onboardingGuide.steps.length;
         console.log(`📄 Manual setup guide declared (${steps} ${steps === 1 ? 'step' : 'steps'}) — for pre-app onboarding`);
+    }
+
+    // Also sent as is inside the spread config, so a release that only changes a
+    // price is not a duplicate either.
+    if (config.subscriptionPlans?.length) {
+        console.log(`💳 ${config.subscriptionPlans.length} subscription plan(s) declared (prices net, customers see gross)`);
+        for (const plan of config.subscriptionPlans) {
+            console.log(`   • ${describeSubscriptionPlan(plan)}`);
+        }
     }
 
     const uploadLogo = getLogoChecksum(config);
