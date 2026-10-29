@@ -92,6 +92,24 @@ plan, e.g. `💳 premium — yearly, 83.19 EUR net, 30 days trial`.
 Plans are part of the package definition fingerprint, so a release that only changes a
 price is not refused as unchanged. A price change applies to new purchases only.
 
+#### Offer screen (SDK ≥ 1.45)
+
+How enyo presents the plans is declared next to them and sent with the release:
+
+- `subscriptionFeatures` — the feature catalog: a kebab-case `featureKey`, an optional
+  icon from `EnyoSubscriptionOfferIconEnum` and a translated title and description.
+- `includedFeatures` on each plan — feature keys, or `{featureKey, value}` for a value
+  such as „bis zu 5 Fahrzeuge"; `highlight` (`recommended`, `best-value`,
+  `most-popular`) on at most one plan.
+- `subscriptionFreeTier` — what the app offers for free; only with
+  `subscriptionMode: 'optional'`.
+- `subscriptionOfferScreen.blocks` — `hero`, `features`, `comparison` (free tier vs.
+  plans), `hint` (e.g. `kind: 'pricing-reason'`) and at most one `plans` block.
+
+The same `validatePackageSubscriptionPlans()` call checks all of it, and the release
+prints a summary, e.g. `🛍️ Offer screen declared — 3 features, free tier, blocks: hero →
+comparison → hint → plans`.
+
 ## Onboarding v2 simulator
 Walk your app's onboarding v2 guides in a browser, without a device:
 

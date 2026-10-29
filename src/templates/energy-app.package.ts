@@ -38,7 +38,8 @@ export default defineEnergyAppPackage({
     // renewals). Prices are net — customers see gross. Plans require the
     // Subscriptions permission; `enyo release` validates them and aborts on errors.
     // Needs EnergyAppPermissionTypeEnum, EnyoSubscriptionPaymentIntervalEnum,
-    // EnyoSubscriptionPricingModelEnum and EnyoCurrencyEnum imported from the SDK.
+    // EnyoSubscriptionPricingModelEnum, EnyoCurrencyEnum, EnyoSubscriptionPlanHighlightEnum
+    // and EnyoSubscriptionOfferIconEnum imported from the SDK.
     //
     // permissions: [EnergyAppPermissionTypeEnum.Subscriptions, ...],
     // subscriptionPlans: [{
@@ -51,5 +52,37 @@ export default defineEnergyAppPackage({
     //         {language: 'de', title: 'Premium', shortDescription: '…', benefits: ['…']},
     //         {language: 'en', title: 'Premium', shortDescription: '…', benefits: ['…']},
     //     ],
+    //     includedFeatures: ['price-optimisation'], // keys of subscriptionFeatures
+    //     highlight: EnyoSubscriptionPlanHighlightEnum.Recommended, // at most one plan
     // }],
+    //
+    // Optional (SDK ≥ 1.45): how enyo presents the plans. Declare each feature
+    // once, describe the free tier (subscriptionMode 'optional' only) and build
+    // the offer screen from blocks: hero, features, comparison, hint, plans.
+    // subscriptionFeatures: [{
+    //     featureKey: 'price-optimisation',
+    //     icon: EnyoSubscriptionOfferIconEnum.PiggyBank,
+    //     storeEntry: [
+    //         {language: 'de', title: 'Optimierung nach dynamischen Preisen'},
+    //         {language: 'en', title: 'Dynamic price optimisation'},
+    //     ],
+    // }],
+    // subscriptionFreeTier: {
+    //     storeEntry: [{language: 'de', title: 'Basis'}, {language: 'en', title: 'Basic'}],
+    //     includedFeatures: [],
+    // },
+    // subscriptionOfferScreen: {
+    //     blocks: [
+    //         {type: 'hero', icon: 'piggy-bank', storeEntry: [
+    //             {language: 'de', title: 'Günstiger laden'},
+    //             {language: 'en', title: 'Charge for less'},
+    //         ]},
+    //         {type: 'comparison'},
+    //         {type: 'hint', kind: 'pricing-reason', storeEntry: [
+    //             {language: 'de', text: 'Die Fahrzeughersteller berechnen uns jedes verbundene Fahrzeug.'},
+    //             {language: 'en', text: 'The car vendors charge us for every connected vehicle.'},
+    //         ]},
+    //         {type: 'plans'},
+    //     ],
+    // },
 })

@@ -51,7 +51,7 @@ export const validateSubscriptionPlansDeclaration = (
 
 /**
  * One summary line for a validated plan, e.g.
- * `premium — yearly, 83.19 EUR net, 30 days trial`.
+ * `premium — yearly, 83.19 EUR net, 30 days trial, best-value`.
  *
  * Prices are said to be net because the customer is shown gross (+19 % VAT).
  *
@@ -64,5 +64,32 @@ export const describeSubscriptionPlan = (plan: EnergyAppPackageSubscriptionPlan)
         .join(' / ');
     const perUnit = plan.pricingModel === EnyoSubscriptionPricingModelEnum.PerUnit ? ' per unit' : '';
     const trial = plan.trialDays ? `, ${plan.trialDays} ${plan.trialDays === 1 ? 'day' : 'days'} trial` : '';
-    return `${plan.planKey} — ${plan.paymentInterval}, ${prices} net${perUnit}${trial}`;
+    const highlight = plan.highlight ? `, ${plan.highlight}` : '';
+    return `${plan.planKey} — ${plan.paymentInterval}, ${prices} net${perUnit}${trial}${highlight}`;
+};
+
+/**
+ * One summary line for how the package promotes its plans (SDK 1.45): the
+ * feature catalog, the free tier and the offer screen's blocks, e.g.
+ * `3 features, free tier, blocks: hero → comparison → hint → plans`.
+ *
+ * Validated together with the plans by {@link validateSubscriptionPlansDeclaration}.
+ *
+ * @param config - The package definition being released.
+ * @returns The summary line, or `undefined` when the package declares none of it.
+ */
+export const describeSubscriptionOffer = (config: EnergyAppPackageDefinition): string | undefined => {
+    const parts: string[] = [];
+    const features = config.subscriptionFeatures?.length ?? 0;
+    if (features > 0) {
+        parts.push(`${features} ${features === 1 ? 'feature' : 'features'}`);
+    }
+    if (config.subscriptionFreeTier) {
+        parts.push('free tier');
+    }
+    const blocks = config.subscriptionOfferScreen?.blocks ?? [];
+    if (blocks.length > 0) {
+        parts.push(`blocks: ${blocks.map((block) => block.type).join(' → ')}`);
+    }
+    return parts.length > 0 ? parts.join(', ') : undefined;
 };

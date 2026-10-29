@@ -22,7 +22,11 @@ import {
     validatePublicFilesDeclaration
 } from '../utils/public-files.js';
 import {validateOnboardingGuideDeclaration} from '../utils/onboarding-guide.js';
-import {describeSubscriptionPlan, validateSubscriptionPlansDeclaration} from '../utils/subscription-plans.js';
+import {
+    describeSubscriptionOffer,
+    describeSubscriptionPlan,
+    validateSubscriptionPlansDeclaration
+} from '../utils/subscription-plans.js';
 import {hashDirectoryContents, hashReleaseDefinition} from '../utils/fingerprint.js';
 import {DEFAULT_REGISTRY_URL, FILE_NAMES} from '../constants/defaults.js';
 import type {
@@ -202,6 +206,13 @@ export const prepareRelease = async (
         for (const plan of config.subscriptionPlans) {
             console.log(`   • ${describeSubscriptionPlan(plan)}`);
         }
+    }
+
+    // The offer screen travels the same way: inside the spread config, hashed
+    // with it, and validated together with the plans.
+    const offer = describeSubscriptionOffer(config);
+    if (offer) {
+        console.log(`🛍️ Offer screen declared — ${offer}`);
     }
 
     const uploadLogo = getLogoChecksum(config);

@@ -4,12 +4,17 @@ import https from 'https';
 import {
     EnergyAppPermissionTypeEnum,
     EnyoCurrencyEnum,
+    EnyoSubscriptionModeEnum,
     EnyoSubscriptionPaymentIntervalEnum,
     EnyoSubscriptionPricingModelEnum
 } from '@enyo-energy/energy-app-sdk';
 import type {EnergyAppPackageDefinition, EnergyAppPackageSubscriptionPlan} from '@enyo-energy/energy-app-sdk';
 import {CLIError} from './error-handler.js';
-import {describeSubscriptionPlan, validateSubscriptionPlansDeclaration} from './subscription-plans.js';
+import {
+    describeSubscriptionOffer,
+    describeSubscriptionPlan,
+    validateSubscriptionPlansDeclaration
+} from './subscription-plans.js';
 import {hashReleaseDefinition} from './fingerprint.js';
 import {buildCreateReleasePayload, prepareRelease} from '../commands/release.js';
 
@@ -42,7 +47,8 @@ const definitionWith = (
     categories: [],
     storeEntry: [],
     compatibility: [],
-    ...(subscriptionPlans ? {subscriptionPlans} : {}),
+    // Plans need a declared mode since SDK 1.38.
+    ...(subscriptionPlans ? {subscriptionPlans, subscriptionMode: EnyoSubscriptionModeEnum.Required} : {}),
     ...overrides
 } as unknown as EnergyAppPackageDefinition);
 
@@ -143,5 +149,93 @@ describe('buildCreateReleasePayload with subscription plans', () => {
 
         assert.equal(hashOf(83.19), hashOf(83.19));
         assert.notEqual(hashOf(83.19), hashOf(91.6));
+    });
+});
+
+/** SDK 1.45: a feature catalog, a free tier and an offer screen built from blocks. */
+const offerDeclaration = (): Partial<EnergyAppPackageDefinition> => ({
+    subscriptionMode: EnyoSubscriptionModeEnum.Optional,
+    subscriptionFeatures: [{
+        featureKey: 'price-optimisation',
+        icon: 'piggy-bank',
+        storeEntry: [
+            {language: 'de', title: 'Optimierung nach dynamischen Preisen'},
+            {language: 'en', title: 'Dynamic price optimisation'}
+        ]
+    }],
+    subscriptionFreeTier: {
+        storeEntry: [{language: 'de', title: 'Basis'}, {language: 'en', title: 'Basic'}],
+        includedFeatures: []
+    },
+    subscriptionOfferScreen: {
+        blocks: [
+            {type: 'hero', storeEntry: [{language: 'de', title: 'Günstiger laden'}, {language: 'en', title: 'Charge for less'}]},
+            {type: 'comparison'},
+            {type: 'plans'}
+        ]
+    }
+});
+const featuredPlan = (): EnergyAppPackageSubscriptionPlan => ({
+    ...premiumPlan(),
+    includedFeatures: ['price-optimisation'],
+    highlight: 'recommended'
+});
+
+describe('subscription offer screen (SDK 1.45)', () => {
+    test('passes a valid offer declaration', () => {
+        assert.doesNotThrow(() =>
+            validateSubscriptionPlansDeclaration(definitionWith([featuredPlan()], offerDeclaration())));
+    });
+
+    test('rejects a free tier on an app that requires a plan', () => {
+        silenceConsole();
+        assert.throws(
+            () => validateSubscriptionPlansDeclaration(definitionWith([featuredPlan()], {
+                ...offerDeclaration(),
+                subscriptionMode: EnyoSubscriptionModeEnum.Required
+            })),
+            CLIError
+        );
+    });
+
+    test('rejects a plan including a feature that is not declared', () => {
+        silenceConsole();
+        assert.throws(
+            () => validateSubscriptionPlansDeclaration(definitionWith(
+                [{...featuredPlan(), includedFeatures: ['unknown-feature']}],
+                offerDeclaration()
+            )),
+            CLIError
+        );
+    });
+
+    test('carries the offer declaration in the create-release payload', () => {
+        const offer = offerDeclaration();
+        const payload = buildCreateReleasePayload(definitionWith([featuredPlan()], offer), undefined, 'production', []);
+        assert.equal(payload.subscriptionFeatures, offer.subscriptionFeatures);
+        assert.equal(payload.subscriptionFreeTier, offer.subscriptionFreeTier);
+        assert.equal(payload.subscriptionOfferScreen, offer.subscriptionOfferScreen);
+        assert.deepEqual((payload.subscriptionPlans as EnergyAppPackageSubscriptionPlan[])[0].highlight, 'recommended');
+    });
+
+    test('changes the definition hash when only the offer screen changes', () => {
+        const hashWith = (blocks: NonNullable<EnergyAppPackageDefinition['subscriptionOfferScreen']>['blocks']) =>
+            hashReleaseDefinition(buildCreateReleasePayload(
+                definitionWith([featuredPlan()], {...offerDeclaration(), subscriptionOfferScreen: {blocks}}),
+                undefined,
+                'production',
+                []
+            ));
+
+        assert.notEqual(hashWith([{type: 'plans'}]), hashWith([{type: 'comparison'}, {type: 'plans'}]));
+    });
+
+    test('summarises the offer and the plan highlight', () => {
+        assert.equal(
+            describeSubscriptionOffer(definitionWith([featuredPlan()], offerDeclaration())),
+            '1 feature, free tier, blocks: hero → comparison → plans'
+        );
+        assert.equal(describeSubscriptionOffer(definitionWith([premiumPlan()])), undefined);
+        assert.equal(describeSubscriptionPlan(featuredPlan()), 'premium — yearly, 83.19 EUR net, 30 days trial, recommended');
     });
 });
