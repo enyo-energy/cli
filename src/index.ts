@@ -13,10 +13,11 @@ import {infoCommand} from './commands/info.js';
 import {triggerDeviceScanCommand} from './commands/trigger-device-scan.js';
 import {CLIError, handleError} from './utils/error-handler.js';
 import {coreUpdateCommand} from './commands/core-update.js';
-import type {CommandOptions, CoreUpdateOptions, OnboardingSimOptions, SecretCommandOptions, SubscribeEebusOptions, SubscribeLogsOptions} from './types';
-import {DEFAULT_DEVICE_PORT, DEFAULT_REGISTRY_URL} from "./constants/defaults.js";
+import type {CommandOptions, CoreUpdateOptions, OnboardingSimOptions, SecretCommandOptions, SimulatorCommandOptions, SubscribeEebusOptions, SubscribeLogsOptions} from './types';
+import {DEFAULT_DEVICE_PORT, DEFAULT_REGISTRY_URL, DEFAULT_SIMULATION_RUNTIME_URL} from "./constants/defaults.js";
 import {secretCommand} from './commands/secret.js';
 import {onboardingSimCommand} from './commands/onboarding-sim.js';
+import {simulatorDeleteCommand, simulatorListCommand, simulatorPullCommand, simulatorPushCommand} from './commands/simulator.js';
 
 const cliDir = path.dirname(fileURLToPath(import.meta.url));
 const packageJsonPath = [
@@ -209,6 +210,56 @@ program.command('secret')
             handleError(error, 'managing secrets');
         }
     });
+
+const simulator = program.command('simulator')
+    .description('Manage your developer org\'s device simulators in the enyo simulation runtime');
+
+const runSimulatorCommand = async (action: () => Promise<void>, context: string): Promise<void> => {
+    try {
+        await action();
+    } catch (error) {
+        if (error instanceof CLIError) {
+            console.error(`❌ ${error.message}`);
+            process.exit(error.exitCode);
+        }
+        handleError(error, context);
+    }
+};
+
+simulator.command('push')
+    .description('Create or replace device simulators from *.simulator.ts / *.simulator.json manifests')
+    .requiredOption('--api-key <apiKey>', 'Your Developer Org API Key')
+    .option('--simulation-runtime <url>', 'enyo Simulation Runtime URL', DEFAULT_SIMULATION_RUNTIME_URL)
+    .option('--developer-org-id <developerOrgId>', 'Refuse to act unless the API key belongs to this developer org')
+    .option('-f, --file <file>', 'Specific manifest to push (if not set, pushes every *.simulator.ts / *.simulator.json)')
+    .action((options: SimulatorCommandOptions) =>
+        runSimulatorCommand(() => simulatorPushCommand(options), 'pushing device simulators'));
+
+simulator.command('list')
+    .description('List your developer org\'s device simulators')
+    .requiredOption('--api-key <apiKey>', 'Your Developer Org API Key')
+    .option('--simulation-runtime <url>', 'enyo Simulation Runtime URL', DEFAULT_SIMULATION_RUNTIME_URL)
+    .option('--developer-org-id <developerOrgId>', 'Refuse to act unless the API key belongs to this developer org')
+    .action((options: SimulatorCommandOptions) =>
+        runSimulatorCommand(() => simulatorListCommand(options), 'listing device simulators'));
+
+simulator.command('pull <name>')
+    .description('Download the stored script of a device simulator')
+    .requiredOption('--api-key <apiKey>', 'Your Developer Org API Key')
+    .option('--simulation-runtime <url>', 'enyo Simulation Runtime URL', DEFAULT_SIMULATION_RUNTIME_URL)
+    .option('--developer-org-id <developerOrgId>', 'Refuse to act unless the API key belongs to this developer org')
+    .option('--out <file>', 'Where to write the script (defaults to its stored file name)')
+    .option('--force', 'Overwrite an existing file')
+    .action((name: string, options: SimulatorCommandOptions & {out?: string}) =>
+        runSimulatorCommand(() => simulatorPullCommand(name, options), 'pulling a device simulator'));
+
+simulator.command('delete <name>')
+    .description('Delete a device simulator of your developer org')
+    .requiredOption('--api-key <apiKey>', 'Your Developer Org API Key')
+    .option('--simulation-runtime <url>', 'enyo Simulation Runtime URL', DEFAULT_SIMULATION_RUNTIME_URL)
+    .option('--developer-org-id <developerOrgId>', 'Refuse to act unless the API key belongs to this developer org')
+    .action((name: string, options: SimulatorCommandOptions) =>
+        runSimulatorCommand(() => simulatorDeleteCommand(name, options), 'deleting a device simulator'));
 
 program.command('core-update')
     .description('Send a core update bundle to the enyo device')

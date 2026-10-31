@@ -149,6 +149,18 @@ export interface ReleaseNote {
     note: string;
 }
 
+export interface SimulatorCommandOptions {
+    apiKey?: string;
+    /** Base URL of the simulation runtime. */
+    simulationRuntime?: string;
+    /** Sent as `X-Developer-Org-Id`: the runtime refuses the call when the API key belongs to another org. */
+    developerOrgId?: string;
+    /** One manifest to push instead of every `*.simulator.ts` / `*.simulator.json`. */
+    file?: string;
+    /** `pull`: overwrite an existing file. */
+    force?: boolean;
+}
+
 export interface CommandOptions {
     host?: string;
     port?: string;

@@ -110,6 +110,47 @@ The same `validatePackageSubscriptionPlans()` call checks all of it, and the rel
 prints a summary, e.g. `🛍️ Offer screen declared — 3 features, free tier, blocks: hero →
 comparison → hint → plans`.
 
+## Device simulators
+
+Your developer org's own device simulators — the scripted Modbus TCP / HTTP
+devices you pick when you start a simulation — can be kept next to your app and
+pushed with the same API key `enyo release` takes. Describe each one in a
+`*.simulator.ts` (default export) or `*.simulator.json` file:
+
+```ts
+// fronius.simulator.ts
+export default {
+    name: 'Fronius Symo GEN24',      // unique per developer org — a push replaces the simulator of this name
+    vendor: 'Fronius',
+    model: 'Symo GEN24',
+    description: 'Hybrid inverter, SunSpec over Modbus TCP',
+    protocol: 'modbus-tcp',          // or 'http', 'ocpp', 'eebus'
+    unitId: 1,                       // Modbus unit id, 1–247 (optional, default 1)
+    script: './simulators/fronius.js', // .js / .mjs, at most 256 KB, relative to this file
+};
+```
+
+```bash
+enyo simulator push --api-key <API KEY>                  # every *.simulator.ts / *.simulator.json here
+enyo simulator push --api-key <API KEY> -f fronius.simulator.ts
+enyo simulator list --api-key <API KEY>
+enyo simulator pull "Fronius Symo GEN24" --api-key <API KEY> [--out fronius.js] [--force]
+enyo simulator delete "Fronius Symo GEN24" --api-key <API KEY>
+```
+
+A push packs each manifest with its script into a bundle (`simulator.json` and
+the script, tar.gz — packed with the system `tar`, like `enyo release`) and
+uploads it; the runtime keeps it in S3. It replaces the simulator in place:
+fields you leave out are cleared, a push that changes nothing changes nothing,
+and simulations that are already running keep the script they started with. `--simulation-runtime <url>` points
+the commands at another runtime (default `https://runtime-mac-mini-01.enyo.energy`);
+`--developer-org-id <id>` makes them refuse to act unless the API key belongs to
+that org — useful in CI, where a dev key must never end up in prod.
+
+The script's API (`enyoSimulation.modbusTcp()`, `.httpApi()`, `.ocpp()`,
+`.eebus()`, …) is documented in the simulation runtime; an EEBUS example is the
+Vaillant heat pump in `enyo-energy/simulation-runtime` under `simulators/`.
+
 ## Onboarding v2 simulator
 Walk your app's onboarding v2 guides in a browser, without a device:
 
