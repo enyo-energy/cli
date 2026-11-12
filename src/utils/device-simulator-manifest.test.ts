@@ -3,9 +3,12 @@ import assert from 'node:assert/strict';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import {execFileSync} from 'node:child_process';
 import {CLIError} from './error-handler.js';
 import {
+    BUNDLE_MANIFEST,
     findDeviceSimulatorManifests,
+    packDeviceSimulatorBundle,
     readDeviceSimulatorManifest,
     resolveDeviceSimulatorManifest,
     SCRIPT_MAX_BYTES,
@@ -64,6 +67,20 @@ describe('resolveDeviceSimulatorManifest', () => {
         assert.equal('vendor' in resolved.body, false);
     });
 
+    test('passes hostname through to the body and the bundle manifest', () => {
+        write('shelly.js', SOURCE);
+
+        const resolved = resolve({name: 'Shelly Pro 3EM', protocol: 'http', hostname: 'shellypro3em-a0b1c2d3e4f5', script: 'shelly.js'});
+
+        assert.equal(resolved.body.hostname, 'shellypro3em-a0b1c2d3e4f5');
+        const unpackDir = path.join(dir, 'unpacked');
+        fs.mkdirSync(unpackDir);
+        fs.writeFileSync(path.join(dir, 'bundle.tar.gz'), packDeviceSimulatorBundle(resolved));
+        execFileSync('tar', ['-xzf', path.join(dir, 'bundle.tar.gz'), '-C', unpackDir]);
+        const manifest = JSON.parse(fs.readFileSync(path.join(unpackDir, BUNDLE_MANIFEST), 'utf8'));
+        assert.equal(manifest.hostname, 'shellypro3em-a0b1c2d3e4f5');
+    });
+
     test('refuses what the runtime would refuse', () => {
         write('fronius.js', SOURCE);
         write('empty.js', '   ');
@@ -78,6 +95,10 @@ describe('resolveDeviceSimulatorManifest', () => {
             {...base, unitId: 0},
             {...base, unitId: 248},
             {...base, unitId: 1.5},
+            {...base, hostname: 'Shelly'},
+            {...base, hostname: 'shelly.local'},
+            {...base, hostname: '-shelly'},
+            {...base, hostname: 'x'.repeat(64)},
             {...base, script: 'missing.js'},
             {...base, script: 'empty.js'},
             {...base, script: 'fronius.ts'},

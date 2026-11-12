@@ -177,6 +177,7 @@ export default {
     description: 'Hybrid inverter, SunSpec over Modbus TCP',
     protocol: 'modbus-tcp',          // or 'http', 'ocpp', 'eebus'
     unitId: 1,                       // Modbus unit id, 1–247 (optional, default 1)
+    hostname: 'fronius-symo',        // host name it answers under, one lower-case DNS label (optional, derived from name)
     script: './simulators/fronius.js', // .js / .mjs, at most 256 KB, relative to this file
 };
 ```

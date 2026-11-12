@@ -18,6 +18,7 @@ interface DeviceSimulatorResponse {
     model?: string;
     protocol: string;
     unitId?: number;
+    hostname?: string;
     script: {fileName: string; sizeBytes: number; sha256: string; updatedAtIso: string};
     updatedVia?: string;
     createdAtIso: string;
@@ -189,6 +190,7 @@ export async function simulatorListCommand(options: SimulatorCommandOptions): Pr
         vendor: simulator.vendor ?? '',
         model: simulator.model ?? '',
         protocol: simulator.protocol,
+        hostname: simulator.hostname ?? '',
         script: `${simulator.script.fileName} (${simulator.script.sizeBytes} B)`,
         updated: simulator.updatedAtIso,
         id: simulator.id,

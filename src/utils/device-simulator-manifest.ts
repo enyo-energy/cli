@@ -18,6 +18,8 @@ const DESCRIPTION_MAX_LENGTH = 1024;
 const UNIT_ID_MIN = 1;
 const UNIT_ID_MAX = 247;
 const SCRIPT_FILE_NAME = /^[^/\\]+\.(js|mjs)$/;
+/** One DNS label, lower case — the runtime's `DEVICE_SIMULATOR_HOSTNAME_PATTERN`. */
+const HOSTNAME_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
 /**
  * A `*.simulator.ts` (default export) or `*.simulator.json` file: one device
@@ -32,6 +34,12 @@ export interface DeviceSimulatorManifest {
     protocol: DeviceSimulatorProtocol;
     /** Modbus unit (slave) id, 1–247. Omit for the default, 1. */
     unitId?: number;
+    /**
+     * The host name it answers under — one DNS label, lower case, e.g.
+     * `shellypro3em-a0b1c2d3e4f5` for an app that detects the device by host
+     * name. Omit to derive it from `name`. Unique per developer org.
+     */
+    hostname?: string;
     /** Path of the script (`.js` / `.mjs`), relative to the manifest. */
     script: string;
 }
@@ -44,6 +52,7 @@ export interface DeviceSimulatorBody {
     description?: string;
     protocol: DeviceSimulatorProtocol;
     unitId?: number;
+    hostname?: string;
     script?: {fileName: string; source: string};
 }
 
@@ -163,6 +172,11 @@ export const resolveDeviceSimulatorManifest = (manifest: unknown, manifestPath: 
         fail(`\`unitId\` must be an integer from ${UNIT_ID_MIN} to ${UNIT_ID_MAX}`);
     }
 
+    const hostname = text('hostname', 63, false);
+    if (hostname !== undefined && !HOSTNAME_PATTERN.test(hostname)) {
+        fail('`hostname` must be one DNS label: lower-case letters, digits and inner dashes, at most 63 characters');
+    }
+
     const scriptPath = text('script', 4096, true) as string;
     const scriptAbsolute = path.resolve(path.dirname(manifestPath), scriptPath);
     const fileName = path.basename(scriptAbsolute);
@@ -190,6 +204,7 @@ export const resolveDeviceSimulatorManifest = (manifest: unknown, manifestPath: 
             ...(description ? {description} : {}),
             protocol: protocol as DeviceSimulatorProtocol,
             ...(unitId !== undefined ? {unitId: unitId as number} : {}),
+            ...(hostname ? {hostname} : {}),
             script: {fileName, source},
         },
         sha256: sha256Of(source),
