@@ -1,0 +1,105 @@
+# On `main`: verify first (build, tests), then — only if green and this push changed the version in
+# package.json — publish publicly to npmjs.com (@enyo-energy/cli, `access: public`).
+# Release = bump `version` in package.json (e.g. `npm version patch|minor|major`) and get it onto `main`.
+# Can also be started by hand via "Run workflow" (then publishes without comparing versions).
+#
+# Authenticates via Trusted Publishing (OIDC, `id-token: write`) — no NPM_TOKEN secret. Configured on
+# npmjs.com for the package: Trusted Publisher → GitHub Actions, repo enyo-energy/cli,
+# workflow `publish.yml` (do not rename this file), no environment. Requires npm ≥ 11.5.1.
+name: publish
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      publish: ${{ steps.version.outputs.publish }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - run: npm test
+
+      # Publish when this push changed the version (or the workflow was started by hand) — and the
+      # version is not on npm yet (e.g. already published locally).
+      - name: New version?
+        id: version
+        env:
+          BEFORE: ${{ github.event.before }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          name=$(node -p "require('./package.json').name")
+          now=$(node -p "require('./package.json').version")
+          echo "version=$now" >> "$GITHUB_OUTPUT"
+          before=""
+          if [ "$EVENT" = "push" ] && [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            before=$(git show "$BEFORE:package.json" 2>/dev/null | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s).version)}catch{}})")
+          fi
+          if [ "$EVENT" != "workflow_dispatch" ] && [ "$now" = "$before" ]; then
+            echo "Version $now unchanged — nothing to publish."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          elif npm view "$name@$now" version >/dev/null 2>&1; then
+            echo "::notice::$name@$now is already on npm — nothing to publish."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Publishing version ${before:-?} -> $now."
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  publish:
+    needs: verify
+    if: needs.verify.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      # Trusted Publishing (OIDC) requires npm 11.5.1 or later.
+      - run: npm install -g npm@^11.5.1
+      - run: npm ci --no-audit --no-fund
+      # Also runs `postbuild`, which copies src/templates into dist.
+      - run: npm run build
+
+      # The `verify` job already built and tested — no lifecycle scripts on publish.
+      - run: npm publish --ignore-scripts
+
+      - name: Release tag
+        # `npm version` + `git push --follow-tags` has usually pushed the tag already.
+        run: |
+          tag="v${{ needs.verify.outputs.version }}"
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+            echo "Tag $tag already exists."
+          else
+            git tag "$tag"
+            git push origin "$tag"
+          fi
