@@ -163,6 +163,42 @@ export const prepareRelease = async (
     channel: 'production' | 'staging',
     configFile?: string
 ): Promise<PreparedRelease> => {
+    const {firmware, files} = await preparePackageFiles(config, configFile);
+
+    const uploadLogo = getLogoChecksum(config);
+    // The same directory and the same exclusions the tarball is built from, so
+    // the fingerprint describes exactly what would be shipped.
+    const bundleSha256 = await hashDirectoryContents(
+        path.join(process.cwd(), BUNDLE_SOURCE_DIR),
+        firmware.map((file) => file.absolutePath)
+    );
+    // Hashed without release notes: those are added after this point and are
+    // deliberately not part of what identifies a release.
+    const definitionSha256 = hashReleaseDefinition(
+        buildCreateReleasePayload(config, uploadLogo, channel, firmware, files)
+    );
+
+    return {
+        config,
+        configFile,
+        packageName: config.packageName,
+        firmware,
+        files,
+        uploadLogo,
+        bundleSha256,
+        definitionSha256
+    };
+};
+
+/**
+ * Validate a package's declarations and resolve its firmware and public files
+ * on disk — the part of a release that a draft release (`enyo draft-release`)
+ * shares, without the fingerprints and the logo only a store release needs.
+ */
+export const preparePackageFiles = async (
+    config: EnergyAppPackageDefinition,
+    configFile?: string
+): Promise<{firmware: PreparedFirmwareFile[]; files: PreparedPublicFile[]}> => {
     // Everything that can fail locally runs before the release is created, so a
     // broken firmware, file, guide or plan declaration never reaches the registry.
     // The guide check resolves image names against `files` but not against the
@@ -215,29 +251,7 @@ export const prepareRelease = async (
         console.log(`🛍️ Offer screen declared — ${offer}`);
     }
 
-    const uploadLogo = getLogoChecksum(config);
-    // The same directory and the same exclusions the tarball is built from, so
-    // the fingerprint describes exactly what would be shipped.
-    const bundleSha256 = await hashDirectoryContents(
-        path.join(process.cwd(), BUNDLE_SOURCE_DIR),
-        firmware.map((file) => file.absolutePath)
-    );
-    // Hashed without release notes: those are added after this point and are
-    // deliberately not part of what identifies a release.
-    const definitionSha256 = hashReleaseDefinition(
-        buildCreateReleasePayload(config, uploadLogo, channel, firmware, files)
-    );
-
-    return {
-        config,
-        configFile,
-        packageName: config.packageName,
-        firmware,
-        files,
-        uploadLogo,
-        bundleSha256,
-        definitionSha256
-    };
+    return {firmware, files};
 };
 
 /**
@@ -322,18 +336,24 @@ const publishRelease = async (
     releaseNote: ReleaseNote[] | undefined,
     force: boolean
 ): Promise<void> => {
+    const bundlePath = buildBundle(release.firmware);
+
+    console.log(`🚀 Creating release on ${registryUrl} using SDK Version ${release.config.sdkVersion}`);
+    await createRelease(bundlePath, release, apiKey, registryUrl, channel, releaseNote, force);
+};
+
+/** Tar the build output into the bundle file and answer its path. */
+export const buildBundle = (firmware: PreparedFirmwareFile[]): string => {
     console.log('📦 Building bundle...');
     // Firmware blobs are distributed through the registry, never inside the
     // package tarball.
-    execFileSync('tar', buildBundleTarArgs(FILE_NAMES.BUNDLE, BUNDLE_SOURCE_DIR, release.firmware), {stdio: 'inherit'});
+    execFileSync('tar', buildBundleTarArgs(FILE_NAMES.BUNDLE, BUNDLE_SOURCE_DIR, firmware), {stdio: 'inherit'});
 
     const bundlePath = path.join(process.cwd(), FILE_NAMES.BUNDLE);
     if (!fs.existsSync(bundlePath)) {
         throw new CLIError(`Bundle not found at ${bundlePath}`);
     }
-
-    console.log(`🚀 Creating release on ${registryUrl} using SDK Version ${release.config.sdkVersion}`);
-    await createRelease(bundlePath, release, apiKey, registryUrl, channel, releaseNote, force);
+    return bundlePath;
 };
 
 /** Build output the tarball is made of, and the fingerprint taken over. */
@@ -386,7 +406,7 @@ const getLogoChecksum = (config: EnergyAppPackageDefinition): string | undefined
 export const buildCreateReleasePayload = (
     config: EnergyAppPackageDefinition,
     uploadLogo: string | undefined,
-    channel: 'production' | 'staging',
+    channel: 'production' | 'staging' | undefined,
     firmware: PreparedFirmwareFile[],
     files: PreparedPublicFile[] = [],
     releaseNote?: ReleaseNote[],
@@ -395,7 +415,8 @@ export const buildCreateReleasePayload = (
     return {
         ...config,
         uploadLogo,
-        channel,
+        // A draft leaves it out: the registry takes the channel the box runs.
+        ...(channel ? {channel} : {}),
         ...(releaseNote ? {releaseNote} : {}),
         ...(firmware.length > 0
             ? {
@@ -484,7 +505,7 @@ const createRelease = async (
     await uploadBundle(bundlePath, apiKey, registry, data.uploadUrl, data.releaseId, releasedVersion);
 };
 
-const uploadBundle = (
+const uploadBundle = async (
     bundlePath: string,
     apiKey: string,
     registry: string,
@@ -492,6 +513,12 @@ const uploadBundle = (
     releaseId: string,
     releasedVersion: number
 ): Promise<void> => {
+    await putBundle(bundlePath, uploadUrl);
+    await finishRelease(releaseId, apiKey, registry, releasedVersion);
+};
+
+/** PUT the bundle to the signed upload URL the registry handed out. */
+export const putBundle = (bundlePath: string, uploadUrl: string): Promise<void> => {
     return new Promise((resolve, reject) => {
         const fileStream = fs.createReadStream(bundlePath);
         const stats = fs.statSync(bundlePath);
@@ -519,9 +546,7 @@ const uploadBundle = (
             res.on('end', () => {
                 if (res.statusCode === 200 || res.statusCode === 201) {
                     console.log('✅ Bundle uploaded successfully.');
-                    finishRelease(releaseId, apiKey, registry, releasedVersion)
-                        .then(() => resolve())
-                        .catch((error: Error) => reject(error));
+                    resolve();
                 } else {
                     console.error(`❌ Error uploading bundle: ${res.statusCode}`);
                     console.error(data);

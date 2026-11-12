@@ -110,6 +110,57 @@ The same `validatePackageSubscriptionPlans()` call checks all of it, and the rel
 prints a summary, e.g. `🛍️ Offer screen declared — 3 features, free tier, blocks: hero →
 comparison → hint → plans`.
 
+## Draft releases
+
+Try a build on one enyo Box before you release it to everyone. **Only internal
+developer orgs** may do this for now; the registry refuses other API keys.
+
+```bash
+npx rsbuild build
+enyo draft-release --device <serial> --api-key <API KEY> [--debug [minutes]] [--logs] [--out [file]]
+```
+
+The CLI validates and packs the package exactly like `enyo release`, but asks for no
+release notes, skips the unchanged check and uploads no logo. The draft goes to that
+one box only and installs there as if it were the latest version — also when the app
+is not installed on the box yet (it then waits for its configuration like any fresh
+install). Nothing changes in the store or on any other box.
+
+- **Version.** A draft carries the released version it builds on plus a counter, shown
+  as `v42-draft.3`. It uses up no version number, so your releases keep counting
+  without gaps.
+- **Replaced by the next release.** The next regular release is higher than the
+  draft's base version, so the box updates to it like every other box, and the draft
+  is gone.
+- **Crash fallback.** If the box has to reinstall the app — after a crash, or when its
+  files are missing — it reinstalls the released version, not the draft.
+- **Channel.** The draft runs on the channel the app is installed on at the box
+  (production otherwise).
+
+`--debug` keeps the app's debug lines on the box for that many minutes (60 when no
+value is given) without changing the box's own log level, so they also reach the log
+view. The box ends the window by itself, and a regular release that replaces the draft
+ends it too. `--logs` streams the app's logs live from the box — opened before the
+install starts, so the install and the first lines of the app are part of it — until
+you press Ctrl+C. `--out` also appends them to a file (and implies `--logs`) — handy
+when you want to read them later or hand them to a coding agent. Without a path it
+writes `.enyo-logs/<serial>-<package>.log`; the CLI puts a `.gitignore` into
+`.enyo-logs`, so the logs never end up in your repo. The file has one line per event
+with the full ISO timestamp and the level as a word (`2026-11-12T10:00:00.000Z WARN  …`),
+and each run starts with a `STREAM` line, so several runs in one file stay apart.
+
+The CLI waits up to ten minutes for the box to report the draft and prints the
+result, e.g. `✅ v42-draft.3 running on <serial>`.
+
+Both also work on their own, for whatever version runs on the box:
+
+```bash
+enyo logs --device <serial> --api-key <API KEY> [--out [file]]
+enyo debug-log --device <serial> --api-key <API KEY> [--minutes <1–1440> | --off]
+```
+
+With several `*.package.ts` files, pick the package with `-f <file>`.
+
 ## Device simulators
 
 Your developer org's own device simulators — the scripted Modbus TCP / HTTP
@@ -146,6 +197,12 @@ and simulations that are already running keep the script they started with. `--s
 the commands at another runtime (default `https://runtime-mac-mini-01.enyo.energy`);
 `--developer-org-id <id>` makes them refuse to act unless the API key belongs to
 that org — useful in CI, where a dev key must never end up in prod.
+
+`push` also takes `--upload-token <token>` instead of `--api-key`: a one-time
+token an AI agent gets from the simulation runtime's MCP tool
+`create_simulator_upload_token`, which answers the complete command to run. It
+pushes one simulator (name it with `-f` when the folder holds several) and is
+used up by a push that succeeds.
 
 The script's API (`enyoSimulation.modbusTcp()`, `.httpApi()`, `.ocpp()`,
 `.eebus()`, …) is documented in the simulation runtime; an EEBUS example is the

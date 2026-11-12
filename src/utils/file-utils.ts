@@ -102,3 +102,29 @@ export const selectPackageConfig = async (specifiedFile?: string): Promise<strin
 
     return path.resolve(packageConfigs[0]);
 };
+/**
+ * The one package config a command acts on: the `-f` file, or the only
+ * `*.package.ts` here. Unlike {@link selectPackageConfig} it never guesses
+ * between several — a draft pushed to a box must be the package that was meant.
+ */
+export const selectSinglePackageConfig = (specifiedFile?: string): string => {
+    if (specifiedFile) {
+        const resolvedPath = path.resolve(specifiedFile);
+        if (!fs.existsSync(resolvedPath)) {
+            throw new CLIError(`Specified config file not found: ${specifiedFile}`);
+        }
+        return resolvedPath;
+    }
+
+    const packageConfigs = findPackageConfigs();
+    if (packageConfigs.length === 1) {
+        console.log(`📖 Using package config: ${packageConfigs[0]}`);
+        return path.resolve(packageConfigs[0]);
+    }
+    if (packageConfigs.length === 0) {
+        throw new CLIError('No package config files (*.package.ts) found in the current directory.');
+    }
+    throw new CLIError(
+        `Found ${packageConfigs.length} package configs (${packageConfigs.join(', ')}). Pick one with -f <file>.`
+    );
+};

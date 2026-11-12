@@ -13,11 +13,14 @@ import {infoCommand} from './commands/info.js';
 import {triggerDeviceScanCommand} from './commands/trigger-device-scan.js';
 import {CLIError, handleError} from './utils/error-handler.js';
 import {coreUpdateCommand} from './commands/core-update.js';
-import type {CommandOptions, CoreUpdateOptions, OnboardingSimOptions, SecretCommandOptions, SimulatorCommandOptions, SubscribeEebusOptions, SubscribeLogsOptions} from './types';
+import type {CommandOptions, CoreUpdateOptions, DebugLogCommandOptions, DraftReleaseCommandOptions, LogsCommandOptions, OnboardingSimOptions, SecretCommandOptions, SimulatorCommandOptions, SubscribeEebusOptions, SubscribeLogsOptions} from './types';
 import {DEFAULT_DEVICE_PORT, DEFAULT_REGISTRY_URL, DEFAULT_SIMULATION_RUNTIME_URL} from "./constants/defaults.js";
 import {secretCommand} from './commands/secret.js';
 import {onboardingSimCommand} from './commands/onboarding-sim.js';
 import {simulatorDeleteCommand, simulatorListCommand, simulatorPullCommand, simulatorPushCommand} from './commands/simulator.js';
+import {draftReleaseCommand} from './commands/draft-release.js';
+import {logsCommand} from './commands/logs.js';
+import {debugLogCommand} from './commands/debug-log.js';
 
 const cliDir = path.dirname(fileURLToPath(import.meta.url));
 const packageJsonPath = [
@@ -99,6 +102,66 @@ program.command('release')
                 process.exit(error.exitCode);
             }
             handleError(error, 'creating release');
+        }
+    });
+
+program.command('draft-release')
+    .description('Install the current build on one enyo Box as a draft release, until the next regular release replaces it (internal developer orgs only)')
+    .requiredOption('--api-key <apiKey>', 'Your Developer Org API Key')
+    .requiredOption('--device <serial>', 'Serial number of the enyo Box')
+    .option('--debug [minutes]', 'Also keep the package\'s debug logs for this many minutes (default 60)')
+    .option('--logs', 'Stream the package\'s logs from the box while it installs, until Ctrl+C')
+    .option('--out [file]', 'Also append the streamed logs to this file (default .enyo-logs/<device>-<package>.log); implies --logs')
+    .option('--registry <registry>', 'enyo Package Registry URL', DEFAULT_REGISTRY_URL)
+    .option('-f, --file <file>', 'Package config to push (required when there are several *.package.ts files)')
+    .action(async (options: DraftReleaseCommandOptions) => {
+        try {
+            await draftReleaseCommand(options);
+        } catch (error) {
+            if (error instanceof CLIError) {
+                console.error(`❌ ${error.message}`);
+                process.exit(error.exitCode);
+            }
+            handleError(error, 'creating draft release');
+        }
+    });
+
+program.command('logs')
+    .description('Stream a package\'s logs from an enyo Box through the registry (internal developer orgs only)')
+    .requiredOption('--api-key <apiKey>', 'Your Developer Org API Key')
+    .requiredOption('--device <serial>', 'Serial number of the enyo Box')
+    .option('--registry <registry>', 'enyo Package Registry URL', DEFAULT_REGISTRY_URL)
+    .option('-f, --file <file>', 'Package config to read the package name from (required when there are several *.package.ts files)')
+    .option('--out [file]', 'Also append the logs to this file (default .enyo-logs/<device>-<package>.log)')
+    .action(async (options: LogsCommandOptions) => {
+        try {
+            await logsCommand(options);
+        } catch (error) {
+            if (error instanceof CLIError) {
+                console.error(`❌ ${error.message}`);
+                process.exit(error.exitCode);
+            }
+            handleError(error, 'streaming logs');
+        }
+    });
+
+program.command('debug-log')
+    .description('Switch a package\'s debug logs on an enyo Box on for a while, or off (internal developer orgs only)')
+    .requiredOption('--api-key <apiKey>', 'Your Developer Org API Key')
+    .requiredOption('--device <serial>', 'Serial number of the enyo Box')
+    .option('--minutes <minutes>', 'How long debug logs stay on, 1–1440 (default 60)')
+    .option('--off', 'Switch debug logs off')
+    .option('--registry <registry>', 'enyo Package Registry URL', DEFAULT_REGISTRY_URL)
+    .option('-f, --file <file>', 'Package config to read the package name from (required when there are several *.package.ts files)')
+    .action(async (options: DebugLogCommandOptions) => {
+        try {
+            await debugLogCommand(options);
+        } catch (error) {
+            if (error instanceof CLIError) {
+                console.error(`❌ ${error.message}`);
+                process.exit(error.exitCode);
+            }
+            handleError(error, 'setting the debug log level');
         }
     });
 
@@ -228,7 +291,8 @@ const runSimulatorCommand = async (action: () => Promise<void>, context: string)
 
 simulator.command('push')
     .description('Create or replace device simulators from *.simulator.ts / *.simulator.json manifests')
-    .requiredOption('--api-key <apiKey>', 'Your Developer Org API Key')
+    .option('--api-key <apiKey>', 'Your Developer Org API Key')
+    .option('--upload-token <token>', 'A one-time upload token instead of the API key (MCP tool create_simulator_upload_token); pushes one simulator')
     .option('--simulation-runtime <url>', 'enyo Simulation Runtime URL', DEFAULT_SIMULATION_RUNTIME_URL)
     .option('--developer-org-id <developerOrgId>', 'Refuse to act unless the API key belongs to this developer org')
     .option('-f, --file <file>', 'Specific manifest to push (if not set, pushes every *.simulator.ts / *.simulator.json)')

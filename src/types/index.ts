@@ -151,6 +151,8 @@ export interface ReleaseNote {
 
 export interface SimulatorCommandOptions {
     apiKey?: string;
+    /** `push`: a one-time token from the MCP tool `create_simulator_upload_token`, instead of an API key. */
+    uploadToken?: string;
     /** Base URL of the simulation runtime. */
     simulationRuntime?: string;
     /** Sent as `X-Developer-Org-Id`: the runtime refuses the call when the API key belongs to another org. */
@@ -269,3 +271,74 @@ export interface CoreUpdateResponse {
     message: string;
     data?: Record<string, unknown>;
 }
+/** Options of the cloud commands that act on one enyo Box: `draft-release`, `logs`, `debug-log`. */
+export interface DeviceCommandOptions {
+    apiKey?: string;
+    registry?: string;
+    file?: string;
+    /** Serial number of the enyo Box. */
+    device?: string;
+}
+
+export interface LogsCommandOptions extends DeviceCommandOptions {
+    /** `true` for a bare `--out` (a file in `.enyo-logs/`), otherwise the path as typed. */
+    out?: boolean | string;
+}
+
+export interface DraftReleaseCommandOptions extends LogsCommandOptions {
+    /** `true` for a bare `--debug` (60 minutes), otherwise the minutes as typed. */
+    debug?: boolean | string;
+    /** Stream the package's logs from the box while it installs, until Ctrl+C. */
+    logs?: boolean;
+}
+
+export interface DebugLogCommandOptions extends DeviceCommandOptions {
+    minutes?: string;
+    off?: boolean;
+}
+
+/** Answer of `create-draft-release`: the same upload handshake as a release, without a logo. */
+export interface CreateDraftReleaseResponse {
+    draftReleaseId: string;
+    cloudPackageId: string;
+    uploadUrl: string;
+    /** The released version the draft builds on. */
+    baseVersion: number;
+    /** Counts the drafts per package and base version. */
+    draftNumber: number;
+    firmwareUploads?: FirmwareUploadTarget[];
+    fileUploads?: PublicFileUploadTarget[];
+}
+
+/** Where a draft release stands on its box (`finish-draft-release`, `draft-releases/:id/status`). */
+export interface DraftReleaseStatus {
+    draftReleaseId: string;
+    cloudPackageId: string;
+    packageName: string;
+    deviceSerialNumber: string;
+    baseVersion: number;
+    draftNumber: number;
+    status: 'uploading' | 'ready';
+    deviceOnline: boolean;
+    /** The box reports this draft as installed. */
+    installed: boolean;
+    installedVersion?: number;
+    installedDraftReleaseId?: string;
+    /** PackageStatusEnum of the installed package, e.g. `installing`, `installed`, `failed`. */
+    packageStatus?: string;
+    /** The app's self-reported state, e.g. `launching`, `running`. */
+    runningState?: string;
+    debugLogsUntilIso?: string;
+}
+
+export interface PackageLogLevelResponse {
+    debugLogsUntilIso: string | null;
+}
+
+/** One event of the package log stream (`devices/:serial/packages/:name/logs`). */
+export type PackageLogStreamEvent =
+    | {type: 'log'; timestampIso: string; level: 'debug' | 'info' | 'warn' | 'error'; message: string}
+    | {type: 'dropped'; count: number}
+    | {type: 'status'; message: string}
+    | {type: 'error'; message: string}
+    | {type: 'ping'};

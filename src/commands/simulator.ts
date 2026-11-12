@@ -105,6 +105,9 @@ class SimulatorRegistry {
         if (response.status === 403 && reason === 'developer_org_mismatch') {
             throw new CLIError(`The API key does not belong to developer org ${this.developerOrgId}.`);
         }
+        if (response.status === 401 && reason.startsWith('upload_token_invalid')) {
+            throw new CLIError('The upload token is unknown, expired or already used — ask for a new one (MCP tool create_simulator_upload_token).');
+        }
         if (response.status === 401) {
             throw new CLIError(`The simulation runtime refused the API key (${reason || 'unauthorized'}). Use your Developer Org API key.`);
         }
@@ -113,11 +116,15 @@ class SimulatorRegistry {
 }
 
 const registryOf = (options: SimulatorCommandOptions): SimulatorRegistry => {
-    if (!options.apiKey) {
+    if (options.apiKey && options.uploadToken) {
+        throw new CLIError('Use either --api-key or --upload-token, not both.');
+    }
+    const credential = options.apiKey ?? options.uploadToken;
+    if (!credential) {
         throw new CLIError('Developer Org API Key is required. Use --api-key <apiKey>');
     }
     return new SimulatorRegistry(
-        options.apiKey,
+        credential,
         options.simulationRuntime || DEFAULT_SIMULATION_RUNTIME_URL,
         options.developerOrgId,
     );
@@ -139,6 +146,11 @@ export async function simulatorPushCommand(options: SimulatorCommandOptions): Pr
     const simulators: ResolvedDeviceSimulator[] = [];
     for (const manifestPath of manifestPaths) {
         simulators.push(await readDeviceSimulatorManifest(manifestPath));
+    }
+    if (options.uploadToken && simulators.length > 1) {
+        throw new CLIError(
+            `An upload token pushes one simulator, but ${simulators.length} manifests were found. Name one with -f <manifest>.`,
+        );
     }
     const names = simulators.map(simulator => simulator.body.name);
     const duplicate = names.find((name, index) => names.indexOf(name) !== index);

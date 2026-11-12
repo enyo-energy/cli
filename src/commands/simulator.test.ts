@@ -146,4 +146,35 @@ describe('simulatorPushCommand', () => {
 
         assert.deepEqual(registry.requests.map(request => request.method), ['GET', 'PUT']);
     });
+
+    test('pushes with a one-time upload token in place of the API key', async () => {
+        const registry = await startRegistry({});
+        try {
+            await simulatorPushCommand({
+                uploadToken: 'enyo_sut_abc',
+                simulationRuntime: registry.url,
+                file: path.join(dir, 'fronius.simulator.json'),
+            });
+        } finally {
+            await registry.close();
+        }
+
+        assert.equal(registry.requests.find(request => request.method === 'PUT')!.authorization, 'Bearer enyo_sut_abc');
+    });
+
+    test('refuses an upload token for more than one manifest, before sending anything', async () => {
+        fs.writeFileSync(path.join(dir, 'second.simulator.json'), JSON.stringify({
+            name: 'Second', protocol: 'http', script: './scripts/fronius.js',
+        }));
+        const cwd = process.cwd();
+        process.chdir(dir);
+        try {
+            await assert.rejects(
+                simulatorPushCommand({uploadToken: 'enyo_sut_abc', simulationRuntime: 'http://127.0.0.1:9'}),
+                /pushes one simulator/,
+            );
+        } finally {
+            process.chdir(cwd);
+        }
+    });
 });
