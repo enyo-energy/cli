@@ -27,6 +27,7 @@ import {
     describeSubscriptionPlan,
     validateSubscriptionPlansDeclaration
 } from '../utils/subscription-plans.js';
+import {describeConsents, validateConsentsDeclaration} from '../utils/consents.js';
 import {hashDirectoryContents, hashReleaseDefinition} from '../utils/fingerprint.js';
 import {DEFAULT_REGISTRY_URL, FILE_NAMES} from '../constants/defaults.js';
 import type {
@@ -207,6 +208,7 @@ export const preparePackageFiles = async (
     validatePublicFilesDeclaration(config);
     validateOnboardingGuideDeclaration(config);
     validateSubscriptionPlansDeclaration(config);
+    validateConsentsDeclaration(config);
 
     const packageRoot = configFile ? path.dirname(path.resolve(configFile)) : process.cwd();
     const firmware = await prepareFirmwareFiles(config, packageRoot);
@@ -249,6 +251,13 @@ export const preparePackageFiles = async (
     const offer = describeSubscriptionOffer(config);
     if (offer) {
         console.log(`🛍️ Offer screen declared — ${offer}`);
+    }
+
+    // Consents ride in the spread config as well, and the definition hash covers
+    // them: a new consent version is a new release, never a duplicate.
+    const consents = describeConsents(config);
+    if (consents) {
+        console.log(`🔏 ${consents}`);
     }
 
     return {firmware, files};

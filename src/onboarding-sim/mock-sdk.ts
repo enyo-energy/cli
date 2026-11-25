@@ -17,11 +17,19 @@
  */
 import {EnyoEnergyAppEnvironment, EnyoPackageChannel} from '@enyo-energy/energy-app-sdk';
 import type {
+    EnergyAppConsent,
+    EnergyAppPackageConsent,
+    EnyoConsentChangeListener,
+    EnyoConsentGrantorEnum,
+    EnyoConsentState,
     EnyoOnboardingV2AdditionalSetupHandler,
     EnyoOnboardingV2DeviceSelectHandler,
     EnyoOnboardingV2DynamicHandler,
     EnyoOnboardingV2EebusDeviceSelectHandler,
     EnyoOnboardingV2GuidesHandler,
+    EnyoOnboardingV2SetupProgress,
+    EnyoOnboardingV2ValidationHandler,
+    EnyoOnboardingV2ZigbeePairingHandler,
 } from '@enyo-energy/energy-app-sdk';
 // The SDK's own barrel does not re-export the host-facing interfaces — the
 // device runtime imports them by path too (see the package worker's sandbox).
@@ -74,6 +82,11 @@ export interface MockSdkOptions {
      * too — the guides handler is documented to answer from memory.
      */
     allowNetwork: boolean;
+    /**
+     * The consents the package definition declares. `useConsent()` answers one
+     * state per declared consent — none given until the simulator ticks one.
+     */
+    consents: EnergyAppPackageConsent[];
     /** Called for every recorded call. */
     onCall?: (call: MockSdkCall) => void;
 }
@@ -85,6 +98,7 @@ export const DEFAULT_MOCK_OPTIONS: Omit<MockSdkOptions, 'onCall'> = {
     deviceId: 'sim-device',
     environment: EnyoEnergyAppEnvironment.DeveloperPortalSimulation,
     allowNetwork: false,
+    consents: [],
 };
 
 export type RegisterCallback = (
@@ -107,6 +121,18 @@ export interface MockSdkState {
     deviceSelectHandler?: EnyoOnboardingV2DeviceSelectHandler;
     /** The EEBUS counterpart — a peer is not a network device, so it is a handler of its own. */
     eebusDeviceSelectHandler?: EnyoOnboardingV2EebusDeviceSelectHandler;
+    /** The Zigbee counterpart: turns the devices an installer paired into appliances. */
+    zigbeePairingHandler?: EnyoOnboardingV2ZigbeePairingHandler;
+    /** Checks a value typed into an input block declared `validated`. */
+    inputValidationHandler?: EnyoOnboardingV2ValidationHandler;
+    /**
+     * Where `reportSetupProgress()` reports go. Set by the run store while a
+     * setup request is running; a report with nobody listening is recorded and
+     * otherwise dropped, as the host drops one for a finished request.
+     */
+    onSetupProgress?: (requestId: string, progress: EnyoOnboardingV2SetupProgress) => void;
+    /** The recorded answer per declared consent, in declaration order. */
+    consentStates: EnyoConsentState[];
     /** The app's last `updateEnergyAppState`, if it set one. */
     energyAppState?: EnergyAppStateEnum;
     /** `completeOnboardingRun` and friends the app asked for. */
@@ -119,6 +145,12 @@ export interface MockSdk {
     instance: EnyoEnergyAppSdk;
     state: MockSdkState;
     options: MockSdkOptions;
+    /**
+     * Record an answer to a declared consent, as enyo would after a person
+     * pressed a consent CTA (or withdrew it in the app), and tell the app's
+     * `listenForConsentChanges` listeners. Returns `null` for an undeclared key.
+     */
+    setConsent: (consentKey: string, granted: boolean, grantedBy?: EnyoConsentGrantorEnum) => EnyoConsentState | null;
 }
 
 /** Arguments as they go into the log: no functions, no cycles, nothing huge. */
@@ -146,6 +178,8 @@ export const createMockSdk = (options: Partial<MockSdkOptions> = {}): MockSdk =>
         shutdownCallbacks: [],
         runActions: [],
         calls: [],
+        // Never answered: no version, not granted — what a fresh install reads.
+        consentStates: config.consents.map(consent => ({consentKey: consent.consentKey, granted: false})),
     };
 
     const record = (method: string, args: unknown[], result?: unknown): void => {
@@ -340,6 +374,26 @@ export const createMockSdk = (options: Partial<MockSdkOptions> = {}): MockSdk =>
             record('useOnboardingV2().deregisterAdditionalSetupHandler', []);
             state.additionalSetupHandler = undefined;
         },
+        reportSetupProgress: async (requestId: string, progress: EnyoOnboardingV2SetupProgress) => {
+            record('useOnboardingV2().reportSetupProgress', [requestId, progress]);
+            state.onSetupProgress?.(requestId, progress);
+        },
+        registerInputValidationHandler: async (handler: EnyoOnboardingV2ValidationHandler) => {
+            record('useOnboardingV2().registerInputValidationHandler', [handler]);
+            state.inputValidationHandler = handler;
+        },
+        deregisterInputValidationHandler: async () => {
+            record('useOnboardingV2().deregisterInputValidationHandler', []);
+            state.inputValidationHandler = undefined;
+        },
+        registerZigbeePairingHandler: async (handler: EnyoOnboardingV2ZigbeePairingHandler) => {
+            record('useOnboardingV2().registerZigbeePairingHandler', [handler]);
+            state.zigbeePairingHandler = handler;
+        },
+        deregisterZigbeePairingHandler: async () => {
+            record('useOnboardingV2().deregisterZigbeePairingHandler', []);
+            state.zigbeePairingHandler = undefined;
+        },
         registerDeviceSelectHandler: async (handler: EnyoOnboardingV2DeviceSelectHandler) => {
             record('useOnboardingV2().registerDeviceSelectHandler', [handler]);
             state.deviceSelectHandler = handler;
@@ -462,6 +516,69 @@ export const createMockSdk = (options: Partial<MockSdkOptions> = {}): MockSdk =>
         spine: eebusSpineStub,
     };
 
+    /**
+     * Consents are recorded by the host, never by the app, so the stub only
+     * reads: the simulator ticks a consent through {@link MockSdk.setConsent}
+     * — from a consent block, an additional setup's checkboxes, or the
+     * inspector — and the app hears about it like it would on a device.
+     */
+    const consentListeners = new Map<string, EnyoConsentChangeListener>();
+    const copyState = (consentState: EnyoConsentState): EnyoConsentState => ({...consentState});
+
+    const consentStub: EnergyAppConsent = {
+        getConsents: async () => {
+            const states = state.consentStates.map(copyState);
+            record('useConsent().getConsents', [], states);
+            return states;
+        },
+        getConsent: async (consentKey: string) => {
+            const found = state.consentStates.find(entry => entry.consentKey === consentKey);
+            const answer = found ? copyState(found) : null;
+            record('useConsent().getConsent', [consentKey], answer);
+            return answer;
+        },
+        listenForConsentChanges: (listener: EnyoConsentChangeListener) => {
+            const id = `sim-consent-listener-${state.calls.length}`;
+            record('useConsent().listenForConsentChanges', [listener], id);
+            consentListeners.set(id, listener);
+            return id;
+        },
+        removeListener: (id: string) => {
+            record('useConsent().removeListener', [id]);
+            consentListeners.delete(id);
+        },
+    };
+
+    const setConsent = (
+        consentKey: string,
+        granted: boolean,
+        grantedBy?: EnyoConsentGrantorEnum
+    ): EnyoConsentState | null => {
+        const declared = config.consents.find(consent => consent.consentKey === consentKey);
+        const index = state.consentStates.findIndex(entry => entry.consentKey === consentKey);
+        if (!declared || index < 0) {
+            return null;
+        }
+        const previous = state.consentStates[index];
+        const now = new Date().toISOString();
+        const next: EnyoConsentState = granted
+            ? {consentKey, version: declared.version, granted: true, grantedBy, grantedAtIso: now}
+            // A withdrawn consent keeps who gave it and when; one never given stays bare.
+            : previous.granted
+              ? {...previous, granted: false, revokedAtIso: now}
+              : {consentKey, granted: false};
+        state.consentStates[index] = next;
+        if (previous.granted !== next.granted) {
+            for (const listener of consentListeners.values()) {
+                // Fire and forget, as the host does: a throwing listener is the app's problem.
+                Promise.resolve()
+                    .then(() => listener(copyState(next)))
+                    .catch(() => undefined);
+            }
+        }
+        return copyState(next);
+    };
+
     /** A `use*()` accessor that is nothing but an empty package. */
     const packageAccessor = <T extends object>(name: string): (() => T) => {
         const stub = emptyPackage<T>(`${name}()`);
@@ -534,6 +651,7 @@ export const createMockSdk = (options: Partial<MockSdkOptions> = {}): MockSdk =>
         useVehicle: packageAccessor('useVehicle'),
         useChargingCard: packageAccessor('useChargingCard'),
         useAuthentication: packageAccessor('useAuthentication'),
+        useAuthenticationV2: packageAccessor('useAuthenticationV2'),
         useSettings: packageAccessor('useSettings'),
         useElectricityPrices: packageAccessor('useElectricityPrices'),
         useNotification: packageAccessor('useNotification'),
@@ -557,6 +675,17 @@ export const createMockSdk = (options: Partial<MockSdkOptions> = {}): MockSdk =>
         },
         useMqtt: packageAccessor('useMqtt'),
         useBluetooth: packageAccessor('useBluetooth'),
+        useZigbee: packageAccessor('useZigbee'),
+        // No radio and no controller here: an app that checks first takes its
+        // "not supported" branch rather than calling into an empty package.
+        isZigbeeSupported: async () => {
+            record('isZigbeeSupported', [], false);
+            return false;
+        },
+        isMatterSupported: async () => {
+            record('isMatterSupported', [], false);
+            return false;
+        },
         useDiagnostics: packageAccessor('useDiagnostics'),
         useLearningPhase: packageAccessor('useLearningPhase'),
         useWifi: packageAccessor('useWifi'),
@@ -577,9 +706,15 @@ export const createMockSdk = (options: Partial<MockSdkOptions> = {}): MockSdk =>
         useCascade: packageAccessor('useCascade'),
         useWebhook: packageAccessor('useWebhook'),
         useSubscriptions: packageAccessor('useSubscriptions'),
+        useConsent: () => {
+            record('useConsent', []);
+            return consentStub;
+        },
         useRoom: packageAccessor('useRoom'),
         useRoomTemperatures: packageAccessor('useRoomTemperatures'),
+        useVacations: packageAccessor('useVacations'),
+        useTimeseriesStore: packageAccessor('useTimeseriesStore'),
     };
 
-    return {instance, state, options: config};
+    return {instance, state, options: config, setConsent};
 };

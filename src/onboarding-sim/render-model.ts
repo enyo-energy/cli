@@ -14,6 +14,9 @@
  */
 import {EnyoOnboardingV2BlockType, EnyoOnboardingV2DynamicKind} from '@enyo-energy/energy-app-sdk';
 import type {
+    EnergyAppPackageConsent,
+    EnergyAppPackageDefinition,
+    EnyoConsentState,
     EnyoOnboardingV2Block,
     EnyoOnboardingV2Guide,
     EnyoOnboardingV2Step,
@@ -43,7 +46,33 @@ export const ACTION_KINDS = [
 ] as const;
 export type ActionKind = (typeof ACTION_KINDS)[number];
 
-export type PickerKind = 'device-select' | 'eebus-device-select';
+export type PickerKind = 'device-select' | 'eebus-device-select' | 'zigbee-pairing';
+
+/**
+ * One checkbox of a consent block (or of an additional setup's `consentKeys`):
+ * the declaration the key resolves to, merged with the answer enyo holds.
+ */
+export interface ConsentRow {
+    consentKey: string;
+    /** False when the package declares no consent with this key — the host cannot render it. */
+    declared: boolean;
+    version?: string;
+    required: boolean;
+    grantableBy: string[];
+    label?: RenderText;
+    summary?: RenderText;
+    title?: RenderText;
+    legalText?: EnergyAppPackageConsent['legalText'];
+    /** In force for the declared version — such a row starts ticked. */
+    granted: boolean;
+    grantedBy?: string;
+}
+
+/** The parts of a package definition a subscription-offer step renders. */
+export type SubscriptionOfferSource = Pick<
+    EnergyAppPackageDefinition,
+    'subscriptionPlans' | 'subscriptionMode' | 'subscriptionFreeTier' | 'subscriptionOfferScreen' | 'subscriptionFeatures'
+>;
 
 export interface SetupFieldSpec {
     name: string;
@@ -83,6 +112,8 @@ export type InputSpec =
           submitLabel: RenderText;
           value?: string;
           validationError?: RenderText;
+          /** The typed value goes to the app's input validation handler first. */
+          validated: boolean;
           outcomes: RenderOutcome[];
       }
     | {
@@ -105,6 +136,31 @@ export type InputSpec =
           outcomes: RenderOutcome[];
           skip?: { id: string; label: RenderText };
           message?: RenderText;
+          /** Checkboxes above the CTA; the CTA stays disabled until every required one is ticked. */
+          consents: ConsentRow[];
+          progressPhases?: { key: string; label: RenderText }[];
+          maxDurationMs?: number;
+      }
+    | {
+          kind: 'consent';
+          blockId: string;
+          cta: RenderText;
+          consents: ConsentRow[];
+          outcomes: RenderOutcome[];
+      }
+    | {
+          kind: 'subscription-offer';
+          blockId: string;
+          /** `block.mode`, else the package's `subscriptionMode`. */
+          mode?: string;
+          /** The offered plans, in declaration order — all of them when `planKeys` is omitted. */
+          plans: NonNullable<EnergyAppPackageDefinition['subscriptionPlans']>;
+          /** Plan keys the block names that the package does not declare. */
+          unknownPlanKeys: string[];
+          freeTier?: EnergyAppPackageDefinition['subscriptionFreeTier'];
+          offerScreen?: EnergyAppPackageDefinition['subscriptionOfferScreen'];
+          features?: EnergyAppPackageDefinition['subscriptionFeatures'];
+          outcomes: RenderOutcome[];
       }
     | {
           kind: 'picker';
@@ -117,6 +173,12 @@ export type InputSpec =
           detectedAt?: string[];
           deviceTypes?: string[];
           vendors?: string[];
+          manufacturerNames?: string[];
+          modelIds?: string[];
+          /** How many entries may be confirmed at once — above 1 only on a Zigbee pairing. */
+          maxDevices: number;
+          /** How long a Zigbee pairing keeps the network open, in seconds. */
+          durationSeconds?: number;
           outcomes: RenderOutcome[];
       };
 
@@ -146,7 +208,43 @@ export interface RenderModelSource {
     dynamicValues: Record<string, string | null | undefined>;
     /** The url a declared public file is served at, or `undefined` when undeclared. */
     fileUrl: (name: string) => string | undefined;
+    /** The consents the package declares. */
+    consents?: EnergyAppPackageConsent[];
+    /** What enyo holds for each declared consent. */
+    consentStates?: EnyoConsentState[];
+    /** The app's rejection of a value typed into a validated input, by block id. */
+    inputErrors?: Record<string, RenderText | undefined>;
+    /** The package's plans and offer, for a subscription-offer step. */
+    subscriptionOffer?: SubscriptionOfferSource;
 }
+
+/** Resolve consent keys against the declaration and the recorded answers, in the block's order. */
+export const consentRowsOf = (
+    keys: unknown,
+    consents: EnergyAppPackageConsent[] = [],
+    states: EnyoConsentState[] = []
+): ConsentRow[] =>
+    (Array.isArray(keys) ? keys.filter((key): key is string => typeof key === 'string') : []).map(consentKey => {
+        const declared = consents.find(consent => consent.consentKey === consentKey);
+        const answer = states.find(state => state.consentKey === consentKey);
+        if (!declared) {
+            return {consentKey, declared: false, required: false, grantableBy: [], granted: false};
+        }
+        return {
+            consentKey,
+            declared: true,
+            version: declared.version,
+            required: declared.required,
+            grantableBy: [...declared.grantableBy],
+            label: declared.label,
+            summary: declared.summary,
+            title: declared.title,
+            legalText: declared.legalText,
+            // An answer for another version no longer counts.
+            granted: answer?.granted === true && answer.version === declared.version,
+            grantedBy: answer?.grantedBy,
+        };
+    });
 
 // Mirrors the frontend DYNAMIC_KIND_META placeholders, as the builder does.
 const DYNAMIC_PLACEHOLDER: Record<string, string> = {
@@ -187,7 +285,9 @@ const pickerSpec = (block: Record<string, unknown> & { id: string; type: string 
             ? 'device-select'
             : block.type === 'eebus-device-select'
               ? 'eebus-device-select'
-              : legacyKind;
+              : block.type === 'zigbee-pairing'
+                ? 'zigbee-pairing'
+                : legacyKind;
     if (!kind) {
         return undefined;
     }
@@ -208,6 +308,16 @@ const pickerSpec = (block: Record<string, unknown> & { id: string; type: string 
         detectedAt: asStringArray(block.detectedAt),
         deviceTypes: asStringArray(block.deviceTypes),
         vendors: asStringArray(block.vendors),
+        manufacturerNames: asStringArray(block.manufacturerNames),
+        modelIds: asStringArray(block.modelIds),
+        maxDevices:
+            kind === 'zigbee-pairing' && typeof block.maxDevices === 'number' && block.maxDevices >= 1
+                ? Math.floor(block.maxDevices)
+                : 1,
+        durationSeconds:
+            kind === 'zigbee-pairing'
+                ? typeof block.durationSeconds === 'number' ? block.durationSeconds : 180
+                : undefined,
         outcomes: outcomesOf(block),
     };
 };
@@ -264,6 +374,33 @@ export const inputSpecOf = (source: RenderModelSource): InputSpec => {
             outcomes: outcomesOf(decision),
             skip: decision.skip as { id: string; label: RenderText } | undefined,
             message: source.setupMessages[decision.id],
+            consents: consentRowsOf(decision.consentKeys, source.consents, source.consentStates),
+            progressPhases: decision.progressPhases as { key: string; label: RenderText }[] | undefined,
+            maxDurationMs: typeof decision.maxDurationMs === 'number' ? decision.maxDurationMs : undefined,
+        };
+    }
+    if (decision.type === 'consent') {
+        return {
+            kind: 'consent',
+            blockId: decision.id,
+            cta: (decision.cta as RenderText | undefined) ?? 'Zustimmen und weiter',
+            consents: consentRowsOf(decision.consentKeys, source.consents, source.consentStates),
+            outcomes: outcomesOf(decision),
+        };
+    }
+    if (decision.type === 'subscription-offer') {
+        const declared = source.subscriptionOffer?.subscriptionPlans ?? [];
+        const planKeys = asStringArray(decision.planKeys);
+        return {
+            kind: 'subscription-offer',
+            blockId: decision.id,
+            mode: (decision.mode as string | undefined) ?? source.subscriptionOffer?.subscriptionMode,
+            plans: planKeys ? declared.filter(plan => planKeys.includes(plan.planKey)) : declared,
+            unknownPlanKeys: (planKeys ?? []).filter(key => !declared.some(plan => plan.planKey === key)),
+            freeTier: source.subscriptionOffer?.subscriptionFreeTier,
+            offerScreen: source.subscriptionOffer?.subscriptionOfferScreen,
+            features: source.subscriptionOffer?.subscriptionFeatures,
+            outcomes: outcomesOf(decision),
         };
     }
     if (decision.type === 'input') {
@@ -278,6 +415,8 @@ export const inputSpecOf = (source: RenderModelSource): InputSpec => {
             submitLabel: (decision.submitLabel as RenderText | undefined) ?? 'Prüfen',
             // A masked value is re-asked, never rendered back.
             value: valueType === 'password' ? undefined : source.inputs[decision.id],
+            validationError: source.inputErrors?.[decision.id],
+            validated: decision.validated === true,
             outcomes: outcomesOf(decision),
         };
     }

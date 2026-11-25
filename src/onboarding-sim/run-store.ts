@@ -13,25 +13,38 @@
  */
 import {randomUUID} from 'node:crypto';
 import {
+    ENYO_ONBOARDING_V2_SETUP_DEFAULT_DURATION_MS,
     ENYO_ONBOARDING_V2_SETUP_FAILED_OUTCOME,
+    ENYO_ONBOARDING_V2_SETUP_MAX_DURATION_MS,
+    EnyoConsentGrantorEnum,
     EnyoOnboardingV2BlockType,
+    EnyoOnboardingV2ConsentOutcome,
     EnyoOnboardingV2DeviceSelectOutcome,
     EnyoOnboardingV2DynamicKind,
     EnyoOnboardingV2EebusPairOutcome,
+    EnyoOnboardingV2InputValueType,
     EnyoOnboardingV2StartVariant,
+    EnyoOnboardingV2SubscriptionOfferOutcome,
     EnyoOnboardingV2TargetType,
     EnyoOnboardingV2TransitionSourceKind,
+    EnyoOnboardingV2ZigbeePairOutcome,
+    validateOnboardingV2SetupProgress,
 } from '@enyo-energy/energy-app-sdk';
 import type {
+    EnyoConsentState,
+    EnyoOnboardingTranslatedContent,
     EnyoOnboardingV2AdditionalSetupBlock,
     EnyoOnboardingV2DeviceSelectBlock,
     EnyoOnboardingV2EebusDeviceSelectBlock,
     EnyoOnboardingV2EebusPeer,
     EnyoOnboardingV2Guide,
+    EnyoOnboardingV2ProgressPhase,
     EnyoOnboardingV2SetupFieldValue,
+    EnyoOnboardingV2SetupProgress,
     EnyoOnboardingV2Step,
     EnyoOnboardingV2Target,
     EnyoOnboardingV2TransitionSource,
+    EnyoOnboardingV2ZigbeePairingBlock,
 } from '@enyo-energy/energy-app-sdk';
 import type {AppLogLine, GuideValidation, LoadedApp} from './app-loader.js';
 import {
@@ -52,6 +65,7 @@ import {
     simulatedDevicesFor,
     simulatedEebusPeersFor,
     simulatedOcppUrl,
+    simulatedZigbeeDevicesFor,
 } from './simulated-world.js';
 
 /**
@@ -60,11 +74,19 @@ import {
  */
 const DYNAMIC_TIMEOUT_MS = 5_000;
 /**
- * The budget for one additional setup, matching
- * `additional-setup.runner.ts` — generous, because the app may be calling a
- * vendor portal, but running out is a `failed` verdict like any other.
+ * The budget for one additional setup: the block's `maxDurationMs`, else the
+ * SDK's default, never more than the SDK's ceiling. Running out is a `failed`
+ * verdict like any other, and progress reports do not extend it.
  */
-const SETUP_TIMEOUT_MS = 45_000;
+export const setupBudgetMs = (block: Pick<EnyoOnboardingV2AdditionalSetupBlock, 'maxDurationMs'>): number =>
+    typeof block.maxDurationMs === 'number' && block.maxDurationMs > 0
+        ? Math.min(block.maxDurationMs, ENYO_ONBOARDING_V2_SETUP_MAX_DURATION_MS)
+        : ENYO_ONBOARDING_V2_SETUP_DEFAULT_DURATION_MS;
+/**
+ * The budget the host gives the input validation handler. Running out is
+ * acceptance, exactly like having no handler.
+ */
+const INPUT_VALIDATION_TIMEOUT_MS = 5_000;
 /**
  * The budget for one picker request.
  *
@@ -85,6 +107,8 @@ export interface RunContext {
     deviceName?: string;
     /** The SKI an EEBUS picker paired the run to. */
     eebusSki?: string;
+    /** The IEEE addresses a Zigbee pairing confirmed. */
+    zigbeeIeeeAddresses?: string[];
     /**
      * The appliance the run is bound to — named by the guide on the two
      * appliance-bound variants, and otherwise produced by a picker's handler.
@@ -122,10 +146,39 @@ export interface SetupResolution {
     /** Set when the verdict is the reserved `failed` branch rather than a match. */
     fellBackToFailed: boolean;
     note?: string;
+    /** What the request carried in `consents` — the answers for the block's `consentKeys`. */
+    consents?: EnyoConsentState[];
+    /** The budget the handler got, in milliseconds. */
+    timeoutMs?: number;
 }
 
-/** Which of the two pickers a resolution belongs to. */
-export type PickKind = 'device-select' | 'eebus-device-select';
+/** One `reportSetupProgress()` call, with the SDK validator's verdict on it. */
+export interface SetupProgressReport {
+    at: number;
+    progress: EnyoOnboardingV2SetupProgress;
+    errors: string[];
+    warnings: string[];
+}
+
+/**
+ * What the installer sees under the CTA while a setup runs: the phase list in
+ * force and where the app says it is. Built from the reports the host would
+ * keep — a report the validator rejects does not move it.
+ */
+export interface SetupProgressView {
+    blockId: string;
+    requestId: string;
+    phases: EnyoOnboardingV2ProgressPhase[];
+    phaseKey?: string;
+    percent?: number;
+    message?: EnyoOnboardingTranslatedContent[];
+    /** The handler resolved: the host marks every phase done. */
+    finished: boolean;
+    reports: SetupProgressReport[];
+}
+
+/** Which of the pickers a resolution belongs to. */
+export type PickKind = 'device-select' | 'eebus-device-select' | 'zigbee-pairing';
 
 /** One entry on a picker screen, in the shape the browser renders it. */
 export interface PickCandidate {
@@ -141,8 +194,10 @@ export interface PickCandidate {
 export interface PickResolution {
     blockId: string;
     kind: PickKind;
-    /** The device id or SKI the run is now bound to. */
+    /** The device id, SKI or (first) IEEE address the run is now bound to. */
     key: string;
+    /** Every confirmed entry — more than one only on a Zigbee pairing with `maxDevices` above 1. */
+    keys: string[];
     /** The candidate's title, for the event log and the badge. */
     label: string;
     /**
@@ -176,7 +231,24 @@ export interface PickerView {
      * which box the run is about to bind.
      */
     preselectedKey?: string;
+    /** Every highlighted entry — a Zigbee pairing highlights `maxDevices` of them. */
+    preselectedKeys?: string[];
+    /** How many entries may be confirmed: 1, except on a Zigbee pairing. */
+    maxDevices: number;
     resolution?: PickResolution;
+}
+
+/** What came of pressing a consent CTA. */
+export interface ConsentResolution {
+    blockId: string;
+    /** Every required consent is in force, so the block's `given` outcome fired. */
+    given: boolean;
+    /** Required consents still missing — the run waits on the step for them. */
+    missing: string[];
+    /** Answers the acting role was not allowed to give, and so were not recorded. */
+    refused: string[];
+    states: EnyoConsentState[];
+    note?: string;
 }
 
 export interface SimRun {
@@ -190,6 +262,12 @@ export interface SimRun {
     setups: Record<string, SetupResolution>;
     /** What each picker block came away with, by block id. */
     picks: Record<string, PickResolution>;
+    /** The progress of each additional setup that reported any, by block id. */
+    progress: Record<string, SetupProgressView>;
+    /** The app's rejection of a validated input's value, by block id. */
+    inputErrors: Record<string, EnyoOnboardingTranslatedContent[] | string | undefined>;
+    /** Plan keys bought on a subscription-offer step during this run. */
+    subscriptions: string[];
     /** Every decision, newest last — the run's own audit trail. */
     events: { at: number; message: string }[];
 }
@@ -233,6 +311,10 @@ export interface RunView {
     setups: Record<string, SetupResolution>;
     /** The picker blocks of the current step, keyed by block id. */
     pickers: Record<string, PickerView>;
+    progress: Record<string, SetupProgressView>;
+    /** What enyo holds for every consent the package declares. */
+    consentStates: EnyoConsentState[];
+    subscriptions: string[];
     events: { at: number; message: string }[];
     /** The step exactly as the enyo app is handed it — what the preview renders. */
     renderModel: RenderModel;
@@ -291,15 +373,29 @@ export const defaultContextFor = (
     }
 };
 
-/** Whether a block is one of the two pickers — the blocks that own their step. */
-const isPickerBlock = (
-    block: {type: EnyoOnboardingV2BlockType}
-): block is EnyoOnboardingV2DeviceSelectBlock | EnyoOnboardingV2EebusDeviceSelectBlock =>
+type PickerBlock =
+    | EnyoOnboardingV2DeviceSelectBlock
+    | EnyoOnboardingV2EebusDeviceSelectBlock
+    | EnyoOnboardingV2ZigbeePairingBlock;
+
+/** Whether a block is one of the pickers — the blocks that own their step. */
+const isPickerBlock = (block: {type: EnyoOnboardingV2BlockType}): block is PickerBlock =>
     block.type === EnyoOnboardingV2BlockType.DeviceSelect ||
-    block.type === EnyoOnboardingV2BlockType.EebusDeviceSelect;
+    block.type === EnyoOnboardingV2BlockType.EebusDeviceSelect ||
+    block.type === EnyoOnboardingV2BlockType.ZigbeePairing;
 
 const pickKindOf = (block: {type: EnyoOnboardingV2BlockType}): PickKind =>
-    block.type === EnyoOnboardingV2BlockType.DeviceSelect ? 'device-select' : 'eebus-device-select';
+    block.type === EnyoOnboardingV2BlockType.DeviceSelect
+        ? 'device-select'
+        : block.type === EnyoOnboardingV2BlockType.ZigbeePairing
+          ? 'zigbee-pairing'
+          : 'eebus-device-select';
+
+/** How many entries a picker confirms at once. */
+const maxDevicesOf = (block: PickerBlock): number =>
+    block.type === EnyoOnboardingV2BlockType.ZigbeePairing && typeof block.maxDevices === 'number' && block.maxDevices >= 1
+        ? Math.floor(block.maxDevices)
+        : 1;
 
 /** Reject after `timeoutMs`, the way the host gives up on a slow handler. */
 const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number): Promise<T | 'timeout'> => {
@@ -344,7 +440,16 @@ export class RunStore {
     private readonly runs = new Map<string, SimRun>();
     private readonly startedAt = Date.now();
 
-    constructor(private app: LoadedApp) {}
+    /**
+     * @param app - The booted app.
+     * @param onEvent - Where lines worth printing go as they happen — progress
+     *   reports arrive while a setup request is still open, so they cannot wait
+     *   for the run view the request returns.
+     */
+    constructor(
+        private app: LoadedApp,
+        private readonly onEvent?: (message: string, level?: 'info' | 'warn' | 'error') => void
+    ) {}
 
     /** Point the store at a freshly pulled guide set; open runs are dropped with it. */
     replaceApp(app: LoadedApp): void {
@@ -403,6 +508,9 @@ export class RunStore {
             dynamic: {},
             setups: {},
             picks: {},
+            progress: {},
+            inputErrors: {},
+            subscriptions: [],
             events: [],
         };
         this.record(run, `Run started — ${guide.startVariant}`);
@@ -425,6 +533,9 @@ export class RunStore {
         run.dynamic = {};
         run.setups = {};
         run.picks = {};
+        run.progress = {};
+        run.inputErrors = {};
+        run.subscriptions = [];
         run.events = [];
         this.record(run, 'Run reset');
         return run;
@@ -512,6 +623,263 @@ export class RunStore {
     }
 
     /**
+     * Record the answers to a step's consent checkboxes, as enyo does when the
+     * CTA is pressed: each answer with the declared version and the role of the
+     * person, and the app's listeners hear about every change.
+     *
+     * The declaration decides who may agree. An answer the acting role may not
+     * give is not recorded — the host shows that role the text but no
+     * checkbox — and is reported back as `refused`.
+     */
+    private recordConsentAnswers(
+        run: SimRun,
+        stepName: string,
+        consentKeys: string[],
+        answers: Record<string, boolean>,
+        role: EnyoConsentGrantorEnum
+    ): { missing: string[]; refused: string[]; states: EnyoConsentState[] } {
+        const refused: string[] = [];
+        for (const key of consentKeys) {
+            const declared = this.app.consents.find(consent => consent.consentKey === key);
+            if (!declared || answers[key] === undefined) {
+                continue;
+            }
+            const current = this.app.mock.state.consentStates.find(state => state.consentKey === key);
+            const inForce = current?.granted === true && current.version === declared.version;
+            if (answers[key] === inForce) {
+                continue;
+            }
+            if (!declared.grantableBy.includes(role)) {
+                refused.push(key);
+                continue;
+            }
+            this.app.mock.setConsent(key, answers[key], role);
+            this.record(run, `${stepName}: consent '${key}' v${declared.version} ${answers[key] ? 'given' : 'withdrawn'} by the ${role}`);
+        }
+
+        const states = consentKeys
+            .map(key => this.app.mock.state.consentStates.find(state => state.consentKey === key))
+            .filter((state): state is EnyoConsentState => Boolean(state))
+            .map(state => ({...state}));
+        const missing = consentKeys.filter(key => {
+            const declared = this.app.consents.find(consent => consent.consentKey === key);
+            // An undeclared key is a validation error, and nothing anyone ticks can satisfy it.
+            if (!declared) {
+                return true;
+            }
+            const state = states.find(entry => entry.consentKey === key);
+            return declared.required && !(state?.granted && state.version === declared.version);
+        });
+        return {missing, refused, states};
+    }
+
+    /**
+     * Tick or untick one declared consent outside any step — the inspector's
+     * toggle, standing in for the customer answering in their own enyo app.
+     */
+    setConsent(consentKey: string, granted: boolean, role: EnyoConsentGrantorEnum): EnyoConsentState {
+        const state = this.app.mock.setConsent(consentKey, granted, role);
+        if (!state) {
+            throw new Error(`The package declares no consent '${consentKey}'`);
+        }
+        this.onEvent?.(`Consent '${consentKey}' ${granted ? 'given' : 'withdrawn'} by the ${role} (outside the guide)`);
+        return state;
+    }
+
+    /**
+     * Press the CTA of a consent block.
+     *
+     * Mirrors the host: the answers are recorded first, and `given` fires only
+     * once every required consent of the block is in force. A required consent
+     * the acting role may not give keeps the run waiting on the step — on a
+     * device until the customer agrees in their own app.
+     */
+    giveConsents(
+        runId: string,
+        blockId: string,
+        answers: Record<string, boolean>,
+        role: EnyoConsentGrantorEnum
+    ): ConsentResolution {
+        const run = this.run(runId);
+        const guide = this.guideOf(run);
+        const step = stepByName(guide, simulate(guide, run.answers).currentStepName);
+        const block = step?.blocks.find(candidate => candidate.id === blockId);
+        if (!step || !block || block.type !== EnyoOnboardingV2BlockType.Consent) {
+            throw new Error(`Block ${blockId} is not a consent block on the current step`);
+        }
+
+        const {missing, refused, states} = this.recordConsentAnswers(run, step.name, block.consentKeys, answers, role);
+        const resolution: ConsentResolution = {blockId, given: missing.length === 0, missing, refused, states};
+        if (!resolution.given) {
+            resolution.note =
+                `Still missing: ${missing.join(', ')}. The run waits on this step until ` +
+                'someone allowed to give them agrees.';
+            this.record(run, `${step.name}: consent CTA — waiting for ${missing.join(', ')}`);
+            return resolution;
+        }
+
+        // Compared as a string: a block's outcome `value` is the plain string the author wrote.
+        const givenValue: string = EnyoOnboardingV2ConsentOutcome.Given;
+        const outcome = block.outcomes.find(candidate => candidate.value === givenValue);
+        if (!outcome) {
+            resolution.note = `The block declares no '${EnyoOnboardingV2ConsentOutcome.Given}' outcome, so the run has nowhere to go.`;
+            return resolution;
+        }
+        this.answer(
+            runId,
+            {kind: EnyoOnboardingV2TransitionSourceKind.Outcome, blockId, outcomeId: outcome.id},
+            EnyoOnboardingV2ConsentOutcome.Given
+        );
+        return resolution;
+    }
+
+    /**
+     * Buy a plan on a subscription-offer step. There is no checkout here: the
+     * purchase always succeeds, and the block's `subscribed` outcome fires the
+     * way it does once enyo holds the subscription.
+     */
+    subscribe(runId: string, blockId: string, planKey: string): void {
+        const run = this.run(runId);
+        const guide = this.guideOf(run);
+        const step = stepByName(guide, simulate(guide, run.answers).currentStepName);
+        const block = step?.blocks.find(candidate => candidate.id === blockId);
+        if (!step || !block || block.type !== EnyoOnboardingV2BlockType.SubscriptionOffer) {
+            throw new Error(`Block ${blockId} is not a subscription-offer block on the current step`);
+        }
+        const declared = this.app.definition?.subscriptionPlans ?? [];
+        const offered = block.planKeys ? declared.filter(plan => block.planKeys!.includes(plan.planKey)) : declared;
+        if (!offered.some(plan => plan.planKey === planKey)) {
+            throw new Error(`Plan '${planKey}' is not offered on ${blockId}`);
+        }
+        const subscribedValue: string = EnyoOnboardingV2SubscriptionOfferOutcome.Subscribed;
+        const outcome = block.outcomes.find(candidate => candidate.value === subscribedValue);
+        if (!outcome) {
+            throw new Error(`Block ${blockId} declares no '${EnyoOnboardingV2SubscriptionOfferOutcome.Subscribed}' outcome`);
+        }
+        if (!run.subscriptions.includes(planKey)) {
+            run.subscriptions.push(planKey);
+        }
+        this.record(run, `${step.name}: subscribed to '${planKey}' (simulated checkout)`);
+        this.answer(
+            runId,
+            {kind: EnyoOnboardingV2TransitionSourceKind.Outcome, blockId, outcomeId: outcome.id},
+            EnyoOnboardingV2SubscriptionOfferOutcome.Subscribed
+        );
+    }
+
+    /**
+     * Hand a value typed into a `validated` input block to the app's input
+     * validation handler.
+     *
+     * Not a branch: a rejection keeps the installer on the step with the app's
+     * message. No handler, a timeout and a throwing handler all accept, as on a
+     * device. An IP-address input is never sent — its device test is the check.
+     */
+    async checkInputWithApp(runId: string, blockId: string, value: string): Promise<{ valid: boolean; note?: string }> {
+        const run = this.run(runId);
+        const guide = this.guideOf(run);
+        const step = stepByName(guide, simulate(guide, run.answers).currentStepName);
+        const block = step?.blocks.find(candidate => candidate.id === blockId);
+        delete run.inputErrors[blockId];
+        if (
+            !step ||
+            block?.type !== EnyoOnboardingV2BlockType.Input ||
+            block.validated !== true ||
+            block.valueType === EnyoOnboardingV2InputValueType.IpAddress
+        ) {
+            return {valid: true};
+        }
+
+        const handler = this.app.mock.state.inputValidationHandler;
+        if (!handler) {
+            this.record(run, `${step.name}: no input validation handler — the value is accepted unchecked`);
+            return {valid: true, note: 'no-handler'};
+        }
+        try {
+            const answer = await withTimeout(
+                handler({
+                    requestId: randomUUID(),
+                    blockId,
+                    stepName: step.name,
+                    valueType: block.valueType,
+                    value,
+                    networkDeviceId: run.context.networkDeviceId,
+                    applianceId: run.context.applianceId,
+                    timeoutMs: INPUT_VALIDATION_TIMEOUT_MS,
+                }),
+                INPUT_VALIDATION_TIMEOUT_MS
+            );
+            if (answer === 'timeout') {
+                this.record(run, `${step.name}: input validation timed out after ${INPUT_VALIDATION_TIMEOUT_MS} ms — accepted`);
+                return {valid: true, note: 'timeout'};
+            }
+            if (answer.valid) {
+                this.record(run, `${step.name}: the app accepted the value`);
+                return {valid: true};
+            }
+            run.inputErrors[blockId] = answer.errorMessage ?? 'Der Wert wurde nicht akzeptiert.';
+            this.record(run, `${step.name}: the app rejected the value — the installer stays on the step`);
+            return {valid: false};
+        } catch (error) {
+            this.record(
+                run,
+                `${step.name}: input validation handler rejected (${error instanceof Error ? error.message : String(error)}) — accepted`
+            );
+            return {valid: true, note: 'rejected'};
+        }
+    }
+
+    /**
+     * Take one `reportSetupProgress()` call for the running request: check it
+     * with the SDK's validator against the phase list in force and the previous
+     * report, keep it, and move the progress only where the host would.
+     */
+    private takeProgress(run: SimRun, stepName: string, view: SetupProgressView, progress: EnyoOnboardingV2SetupProgress): void {
+        const previous = view.reports.length > 0 ? view.reports[view.reports.length - 1].progress : undefined;
+        const {errors, warnings} = validateOnboardingV2SetupProgress(progress, {
+            phases: view.phases.length > 0 ? view.phases : undefined,
+            previous,
+        });
+        view.reports.push({at: Date.now() - this.startedAt, progress, errors, warnings});
+
+        // The host keeps what it can use and the last good value of the rest.
+        if (errors.length === 0) {
+            if (progress.phases) {
+                view.phases = progress.phases;
+            }
+            if (progress.phaseKey !== undefined) {
+                view.phaseKey = progress.phaseKey;
+            }
+            if (progress.percent !== undefined) {
+                view.percent = progress.percent;
+            }
+            if (progress.message !== undefined) {
+                view.message = progress.message;
+            }
+        }
+
+        const parts = [
+            progress.phaseKey ? `phase ${progress.phaseKey}` : undefined,
+            progress.percent !== undefined ? `${progress.percent} %` : undefined,
+            progress.phases ? `${progress.phases.length} phases` : undefined,
+        ].filter(Boolean);
+        const line = `${stepName}: progress ${parts.join(', ') || '(empty report)'}`;
+        this.record(run, line + (errors.length ? ' — dropped' : ''));
+        this.onEvent?.(`Setup progress · ${line}`, errors.length ? 'error' : warnings.length ? 'warn' : 'info');
+        for (const error of errors) {
+            this.onEvent?.(`Setup progress · ${stepName}: ${error}`, 'error');
+        }
+        for (const warning of warnings) {
+            this.onEvent?.(`Setup progress · ${stepName}: ${warning}`, 'warn');
+        }
+    }
+
+    /** The progress of a run's setups, for the browser to poll while a request is open. */
+    progressOf(runId: string): Record<string, SetupProgressView> {
+        return this.run(runId).progress;
+    }
+
+    /**
      * Run an `additional-setup` block: hand the collected fields to the app and
      * turn its verdict into the outcome the guide branches on.
      *
@@ -520,13 +888,20 @@ export class RunStore {
      * handler, a rejection, a timeout, an undeclared outcome — falls back to the
      * reserved `failed` branch. The installer always gets a branch.
      *
+     * A block with `consentKeys` records the ticked consents first and refuses
+     * to run while a required one is missing — the CTA is disabled on a device.
+     * The budget is the block's `maxDurationMs`, and progress reports arriving
+     * while the handler runs are validated and kept.
+     *
      * The collected values may be credentials, so nothing here logs one: only the
      * setup key, the field names and the resulting outcome.
      */
     async runAdditionalSetup(
         runId: string,
         blockId: string,
-        values: EnyoOnboardingV2SetupFieldValue[]
+        values: EnyoOnboardingV2SetupFieldValue[],
+        consentAnswers: Record<string, boolean> = {},
+        role: EnyoConsentGrantorEnum = EnyoConsentGrantorEnum.Installer
     ): Promise<SetupResolution> {
         const run = this.run(runId);
         const guide = this.guideOf(run);
@@ -538,9 +913,22 @@ export class RunStore {
         }
 
         const setupBlock: EnyoOnboardingV2AdditionalSetupBlock = block;
+        let consents: EnyoConsentState[] | undefined;
+        if (setupBlock.consentKeys?.length) {
+            const recorded = this.recordConsentAnswers(run, step.name, setupBlock.consentKeys, consentAnswers, role);
+            if (recorded.missing.length > 0) {
+                throw new Error(
+                    `Required consent(s) not given: ${recorded.missing.join(', ')} — the CTA stays disabled until ` +
+                    'someone allowed to give them agrees.'
+                );
+            }
+            consents = recorded.states;
+        }
+
         const handler = this.app.mock.state.additionalSetupHandler;
+        const timeoutMs = setupBudgetMs(setupBlock);
         const fieldNames = values.map(value => value.name).join(', ');
-        this.record(run, `${step.name}: setup '${setupBlock.setupKey}' with fields [${fieldNames}]`);
+        this.record(run, `${step.name}: setup '${setupBlock.setupKey}' with fields [${fieldNames}], budget ${timeoutMs} ms`);
 
         const failed = (note: string, extra: Partial<SetupResolution> = {}): SetupResolution => ({
             blockId,
@@ -549,6 +937,8 @@ export class RunStore {
                 setupBlock.outcomes.find(outcome => outcome.value === ENYO_ONBOARDING_V2_SETUP_FAILED_OUTCOME)?.id ?? '',
             fellBackToFailed: true,
             note,
+            consents,
+            timeoutMs,
             ...extra,
         });
 
@@ -557,6 +947,26 @@ export class RunStore {
             resolution = failed('The app registered no additional-setup handler, so every setup block fails.');
         } else {
             const requestId = randomUUID();
+            const progress: SetupProgressView = {
+                blockId,
+                requestId,
+                phases: setupBlock.progressPhases ? [...setupBlock.progressPhases] : [],
+                finished: false,
+                reports: [],
+            };
+            run.progress[blockId] = progress;
+            // Reports for any other request — an earlier one, or one that has
+            // already been answered — are dropped, as the host drops them.
+            this.app.mock.state.onSetupProgress = (reportedId, report) => {
+                if (reportedId === requestId && !progress.finished) {
+                    this.takeProgress(run, step.name, progress, report);
+                } else {
+                    this.onEvent?.(
+                        `Setup progress for request ${reportedId} ignored — it is not the running request.`,
+                        'warn'
+                    );
+                }
+            };
             try {
                 const answer = await withTimeout(
                     handler({
@@ -567,13 +977,14 @@ export class RunStore {
                         values,
                         networkDeviceId: run.context.networkDeviceId,
                         applianceId: run.context.applianceId,
-                        timeoutMs: SETUP_TIMEOUT_MS,
+                        consents,
+                        timeoutMs,
                     }),
-                    SETUP_TIMEOUT_MS
+                    timeoutMs
                 );
 
                 if (answer === 'timeout') {
-                    resolution = failed(`The app did not answer within ${SETUP_TIMEOUT_MS} ms.`);
+                    resolution = failed(`The app did not answer within ${timeoutMs} ms.`);
                 } else {
                     const matched = setupBlock.outcomes.find(outcome => outcome.value === answer.outcome);
                     resolution = matched
@@ -585,6 +996,8 @@ export class RunStore {
                               message: answer.message,
                               detail: answer.detail,
                               fellBackToFailed: false,
+                              consents,
+                              timeoutMs,
                           }
                         : failed(
                               `The app answered '${answer.outcome}', which this block does not declare ` +
@@ -596,6 +1009,12 @@ export class RunStore {
                 resolution = failed(
                     `The app's handler rejected: ${error instanceof Error ? error.message : String(error)}`
                 );
+            } finally {
+                // The promise settling is the end: every phase counts as done.
+                progress.finished = true;
+                if (this.app.mock.state.onSetupProgress) {
+                    this.app.mock.state.onSetupProgress = undefined;
+                }
             }
         }
 
@@ -732,17 +1151,30 @@ export class RunStore {
      * The candidates a picker block offers, after its own filter.
      *
      * The list is discovery's, not the block's: a `device-select` sees what the
-     * scan turned up and an `eebus-device-select` sees what announced itself over
-     * SHIP. The filter only narrows it, which is why a filter that matches
-     * nothing leaves an empty screen rather than the unfiltered list.
+     * scan turned up, an `eebus-device-select` sees what announced itself over
+     * SHIP, and a `zigbee-pairing` sees what joined the network it opened. The
+     * filter only narrows it, which is why a filter that matches nothing leaves
+     * an empty screen rather than the unfiltered list.
      */
-    candidatesFor(block: EnyoOnboardingV2DeviceSelectBlock | EnyoOnboardingV2EebusDeviceSelectBlock): PickCandidate[] {
+    candidatesFor(block: PickerBlock): PickCandidate[] {
         if (block.type === EnyoOnboardingV2BlockType.DeviceSelect) {
             return simulatedDevicesFor(block.detectedAt).map(device => ({
                 key: device.id,
                 title: device.hostname,
                 subtitle: device.ipAddress,
                 badges: device.detectedAt ?? [],
+            }));
+        }
+        if (block.type === EnyoOnboardingV2BlockType.ZigbeePairing) {
+            return simulatedZigbeeDevicesFor(block.manufacturerNames, block.modelIds).map(device => ({
+                key: device.ieeeAddress,
+                title: device.name ?? device.modelId ?? device.ieeeAddress,
+                subtitle: [device.manufacturerName ?? 'no manufacturer name', device.modelId, device.ieeeAddress]
+                    .filter(Boolean)
+                    .join(' · '),
+                badges: [device.interviewState, device.powerSource].filter((badge): badge is NonNullable<typeof badge> =>
+                    Boolean(badge)
+                ),
             }));
         }
         return simulatedEebusPeersFor(block.deviceTypes).map(peer => ({
@@ -757,6 +1189,18 @@ export class RunStore {
         }));
     }
 
+    /**
+     * What the app highlights on entry: the lone match of a block that left
+     * `autoSelectSingleMatch` on — for a Zigbee pairing, exactly `maxDevices`
+     * matching devices.
+     */
+    private preselectionFor(block: PickerBlock, candidates: PickCandidate[]): string[] {
+        if (block.autoSelectSingleMatch === false || candidates.length === 0) {
+            return [];
+        }
+        return candidates.length === maxDevicesOf(block) ? candidates.map(candidate => candidate.key) : [];
+    }
+
     /** The picker blocks of a step, with their lists and whatever came of them. */
     private pickerViews(run: SimRun, step: EnyoOnboardingV2Step): Record<string, PickerView> {
         const views: Record<string, PickerView> = {};
@@ -765,12 +1209,14 @@ export class RunStore {
                 continue;
             }
             const candidates = this.candidatesFor(block);
+            const preselected = this.preselectionFor(block, candidates);
             views[block.id] = {
                 blockId: block.id,
                 kind: pickKindOf(block),
                 candidates,
-                preselectedKey:
-                    candidates.length === 1 && block.autoSelectSingleMatch !== false ? candidates[0].key : undefined,
+                preselectedKey: preselected.length === 1 ? preselected[0] : undefined,
+                preselectedKeys: preselected.length > 0 ? preselected : undefined,
+                maxDevices: maxDevicesOf(block),
                 resolution: run.picks[block.id],
             };
         }
@@ -784,11 +1230,12 @@ export class RunStore {
      * `not-found` (or, for a handshake that did not come up, `failure`), and
      * those are ordinary outcome answers with no handler behind them.
      *
-     * `autoSelected` is what the browser says: the installer confirmed the
-     * candidate the app highlighted rather than picking one themselves. It is
-     * only believed for the candidate that is actually highlighted.
+     * `keys` is one entry, or up to `maxDevices` on a Zigbee pairing.
+     * `autoSelected` is what the browser says: the installer confirmed what the
+     * app highlighted rather than picking themselves. It is only believed for
+     * exactly the highlighted set.
      */
-    async pick(runId: string, blockId: string, key: string, autoSelected = false): Promise<PickResolution> {
+    async pick(runId: string, blockId: string, keys: string | string[], autoSelected = false): Promise<PickResolution> {
         const run = this.run(runId);
         const guide = this.guideOf(run);
         const walk = simulate(guide, run.answers);
@@ -798,12 +1245,23 @@ export class RunStore {
             throw new Error(`Block ${blockId} is not a picker block on the current step`);
         }
 
-        const candidate = this.candidatesFor(block).find(entry => entry.key === key);
-        if (!candidate) {
-            throw new Error(`'${key}' is not on ${blockId}'s list — its filter leaves it out`);
+        const wanted = [...new Set(Array.isArray(keys) ? keys : [keys])];
+        const max = maxDevicesOf(block);
+        if (wanted.length === 0 || wanted.length > max) {
+            throw new Error(`Pick between 1 and ${max} entr${max === 1 ? 'y' : 'ies'} on ${blockId}`);
         }
-        const preselected = this.pickerViews(run, step)[blockId]?.preselectedKey;
-        return this.resolvePick(run, step, block, candidate, autoSelected && preselected === key);
+        const list = this.candidatesFor(block);
+        const picked = wanted.map(key => {
+            const candidate = list.find(entry => entry.key === key);
+            if (!candidate) {
+                throw new Error(`'${key}' is not on ${blockId}'s list — its filter leaves it out`);
+            }
+            return candidate;
+        });
+        const preselected = this.preselectionFor(block, list);
+        const isPreselected =
+            preselected.length === wanted.length && wanted.every(key => preselected.includes(key));
+        return this.resolvePick(run, step, block, picked, autoSelected && isPreselected);
     }
 
     /**
@@ -811,58 +1269,68 @@ export class RunStore {
      * block's positive branch.
      *
      * Mirrors the host in the two places it matters. The handler is optional:
-     * without one the block still works, the run stays bound to the device or the
-     * SKI, and no appliance is created. And nothing the handler does re-routes
-     * the flow — a rejection, a timeout and an empty answer are all the positive
-     * outcome with no appliance, because a guide that must branch on "we could
-     * not use it" needs a device test, whose verdict is a routing handle.
+     * without one the block still works, the run stays bound to the device, the
+     * SKI or the joined Zigbee devices, and no appliance is created. And nothing
+     * the handler does re-routes the flow — a rejection, a timeout and an empty
+     * answer are all the positive outcome with no appliance, because a guide that
+     * must branch on "we could not use it" needs a device test, whose verdict is
+     * a routing handle.
      */
     private async resolvePick(
         run: SimRun,
         step: EnyoOnboardingV2Step,
-        block: EnyoOnboardingV2DeviceSelectBlock | EnyoOnboardingV2EebusDeviceSelectBlock,
-        candidate: PickCandidate,
+        block: PickerBlock,
+        picked: PickCandidate[],
         autoSelected: boolean
     ): Promise<PickResolution> {
         const kind = pickKindOf(block);
-        const base = {blockId: block.id, kind, key: candidate.key, label: candidate.title, autoSelected};
+        const keys = picked.map(candidate => candidate.key);
+        const base = {
+            blockId: block.id,
+            kind,
+            key: keys[0],
+            keys,
+            label: picked.map(candidate => candidate.title).join(', '),
+            autoSelected,
+        };
         this.record(
             run,
-            `${step.name}: ${kind} ${autoSelected ? 'auto-selected' : 'picked'} ${candidate.title} (${candidate.key})`
+            `${step.name}: ${kind} ${autoSelected ? 'auto-selected' : 'picked'} ${base.label} (${keys.join(', ')})`
         );
 
         const requestId = randomUUID();
+        const common = {
+            requestId,
+            blockId: block.id,
+            stepName: step.name,
+            applianceId: run.context.applianceId,
+            timeoutMs: PICK_TIMEOUT_MS,
+            autoSelected: autoSelected || undefined,
+        };
         const deviceHandler = this.app.mock.state.deviceSelectHandler;
         const eebusHandler = this.app.mock.state.eebusDeviceSelectHandler;
-        // Bound to its own handler here so the two requests — a network device
-        // with an address, a peer with a SKI — stay apart, which is the reason
-        // the SDK keeps them apart in the first place.
-        const ask =
-            block.type === EnyoOnboardingV2BlockType.DeviceSelect
-                ? deviceHandler &&
-                  (() =>
-                      deviceHandler({
-                          requestId,
-                          blockId: block.id,
-                          stepName: step.name,
-                          devices: simulatedDevicesFor(block.detectedAt).filter(
-                              device => device.id === candidate.key
-                          ),
-                          applianceId: run.context.applianceId,
-                          timeoutMs: PICK_TIMEOUT_MS,
-                          autoSelected: autoSelected || undefined,
-                      }))
-                : eebusHandler &&
-                  (() =>
-                      eebusHandler({
-                          requestId,
-                          blockId: block.id,
-                          stepName: step.name,
-                          peer: this.peerFor(candidate.key),
-                          applianceId: run.context.applianceId,
-                          timeoutMs: PICK_TIMEOUT_MS,
-                          autoSelected: autoSelected || undefined,
-                      }));
+        const zigbeeHandler = this.app.mock.state.zigbeePairingHandler;
+        // Bound to its own handler here so the requests — a network device with
+        // an address, a peer with a SKI, joined Zigbee devices — stay apart,
+        // which is the reason the SDK keeps them apart in the first place.
+        let ask: (() => Promise<{ applianceIds?: string[]; detail?: string }>) | undefined;
+        if (block.type === EnyoOnboardingV2BlockType.DeviceSelect) {
+            ask = deviceHandler && (() =>
+                deviceHandler({
+                    ...common,
+                    devices: simulatedDevicesFor(block.detectedAt).filter(device => keys.includes(device.id)),
+                }));
+        } else if (block.type === EnyoOnboardingV2BlockType.ZigbeePairing) {
+            ask = zigbeeHandler && (() =>
+                zigbeeHandler({
+                    ...common,
+                    devices: simulatedZigbeeDevicesFor(block.manufacturerNames, block.modelIds).filter(device =>
+                        keys.includes(device.ieeeAddress)
+                    ),
+                }));
+        } else {
+            ask = eebusHandler && (() => eebusHandler({...common, peer: this.peerFor(keys[0])}));
+        }
 
         let resolution: PickResolution;
         if (!ask) {
@@ -909,15 +1377,17 @@ export class RunStore {
         run.picks[block.id] = resolution;
 
         // The pick binds the run whatever the app answered: an address (or a
-        // SKI) is what later steps resolve against — `device-ip` on a dynamic
-        // block, `current` on a device test.
+        // SKI, or IEEE addresses) is what later steps resolve against —
+        // `device-ip` on a dynamic block, `current` on a device test.
         if (kind === 'device-select') {
-            const device = simulatedDevicesFor().find(entry => entry.id === candidate.key);
-            run.context.networkDeviceId = candidate.key;
+            const device = simulatedDevicesFor().find(entry => entry.id === keys[0]);
+            run.context.networkDeviceId = keys[0];
             run.context.deviceIp = device?.ipAddress;
             run.context.deviceName = device?.hostname;
+        } else if (kind === 'zigbee-pairing') {
+            run.context.zigbeeIeeeAddresses = keys;
         } else {
-            run.context.eebusSki = candidate.key;
+            run.context.eebusSki = keys[0];
         }
         if (resolution.applianceIds.length > 0) {
             // A reconnect handler answers with the id it came in with, which is
@@ -933,12 +1403,14 @@ export class RunStore {
         );
 
         // The one outcome a pick can produce. Compared as a string because the
-        // two pickers name it in enums of their own, and a block's outcome
-        // `value` is the plain string the author wrote.
+        // pickers name it in enums of their own, and a block's outcome `value`
+        // is the plain string the author wrote.
         const positive: string =
             kind === 'device-select'
                 ? EnyoOnboardingV2DeviceSelectOutcome.Selected
-                : EnyoOnboardingV2EebusPairOutcome.Paired;
+                : kind === 'zigbee-pairing'
+                  ? EnyoOnboardingV2ZigbeePairOutcome.Paired
+                  : EnyoOnboardingV2EebusPairOutcome.Paired;
         const outcome = block.outcomes.find(candidateOutcome => candidateOutcome.value === positive);
         if (!outcome) {
             // An authoring gap the validator warns about: the pick succeeded and
@@ -982,6 +1454,8 @@ export class RunStore {
         for (const name of visited.slice(index + 1)) {
             for (const block of stepByName(guide, name)?.blocks ?? []) {
                 delete run.picks[block.id];
+                delete run.progress[block.id];
+                delete run.inputErrors[block.id];
             }
         }
     }
@@ -1023,6 +1497,10 @@ export class RunStore {
             ),
             fileUrl: name =>
                 this.app.files.some(file => file.name === name) ? `/api/files/${encodeURIComponent(name)}` : undefined,
+            consents: this.app.consents,
+            consentStates: this.app.mock.state.consentStates,
+            inputErrors: run.inputErrors,
+            subscriptionOffer: this.app.definition,
         });
 
         return {
@@ -1045,6 +1523,9 @@ export class RunStore {
             dynamic: run.dynamic,
             setups: run.setups,
             pickers: step && walk.status !== 'terminal' ? this.pickerViews(run, step) : {},
+            progress: run.progress,
+            consentStates: this.app.mock.state.consentStates.map(state => ({...state})),
+            subscriptions: run.subscriptions,
             events: run.events,
             renderModel,
         };

@@ -22,6 +22,7 @@ import {
     validatePackageOnboardingGuide,
 } from '@enyo-energy/energy-app-sdk';
 import type {
+    EnergyAppPackageConsent,
     EnergyAppPackageDefinition,
     EnyoOnboardingV2Guide,
     EnyoOnboardingV2GuidesResult,
@@ -59,6 +60,17 @@ export interface LoadedApp {
     entryPath: string;
     /** Public files declared in the package definition — image blocks resolve against these. */
     files: EnergyAppPackagePublicFile[];
+    /**
+     * Consents declared in the package definition — consent blocks and an
+     * additional setup's `consentKeys` resolve against these, and the guide
+     * validators count an unknown key as an error.
+     */
+    consents: EnergyAppPackageConsent[];
+    /**
+     * The package definition, when one was found. A subscription-offer block
+     * renders the plans, the free tier and the mode declared here.
+     */
+    definition?: EnergyAppPackageDefinition;
     /**
      * The static manual setup guide the package definition declares, for
      * pre-app onboarding. Not one of `guides`: the host never offers it and the
@@ -255,6 +267,7 @@ export const loadEnergyApp = async (options: LoadEnergyAppOptions = {}): Promise
     const timeoutMs = options.timeoutMs ?? DEFAULT_GUIDES_TIMEOUT_MS;
     const packageName = options.config?.packageName ?? path.basename(cwd);
     const files = options.config?.files ?? [];
+    const consents = options.config?.consents ?? [];
 
     const logs: AppLogLine[] = [];
     const appConsole = createAppConsole(startedAt, line => {
@@ -265,6 +278,7 @@ export const loadEnergyApp = async (options: LoadEnergyAppOptions = {}): Promise
     const mock = createMockSdk({
         packageName,
         allowNetwork: options.allowNetwork ?? false,
+        consents,
         onCall: options.onCall,
     });
 
@@ -311,6 +325,8 @@ export const loadEnergyApp = async (options: LoadEnergyAppOptions = {}): Promise
         cwd,
         entryPath,
         files,
+        consents,
+        definition: options.config,
         packageGuide: readPackageGuide(options.config),
         mock,
         guides: [],
@@ -368,7 +384,9 @@ const pullGuides = async (app: LoadedApp, timeoutMs: number): Promise<void> => {
         return;
     }
 
-    const context = {files: app.files};
+    // With the declaring package's consents in the context, a consentKey the
+    // package does not declare is a blocking error rather than a shape check.
+    const context = {files: app.files, consents: app.consents};
     app.guides = answer.guides ?? [];
     app.answer = app.guides.length === 0 ? 'empty' : 'guides';
     app.detail = answer.detail;

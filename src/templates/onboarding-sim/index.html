@@ -391,6 +391,54 @@
 
         .error-card { margin-top: 4px; gap: 12px; border: 1.5px solid var(--red-500); }
 
+        /* consent checkboxes (consent block, additional setup consentKeys) */
+        .consent-row { display: flex; gap: 12px; align-items: flex-start; }
+        .checkbox {
+            display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px;
+            width: 22px; height: 22px; border-radius: 6px; border: 2px solid var(--gray-300); background: var(--card);
+            cursor: pointer; padding: 0;
+        }
+        .checkbox.on { border-color: var(--primary-900); background: var(--primary-900); }
+        .checkbox:disabled { cursor: not-allowed; opacity: .5; }
+        .consent-row .lbl { font-size: 14px; font-weight: 600; line-height: 1.375; }
+        .consent-row .opt { font-weight: 500; color: var(--gray-500); }
+        .consent-row .legal-link { border: 0; background: none; padding: 0; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--blue-500); text-decoration: underline; }
+        .consent-row .role-note { font-size: 13px; font-weight: 500; color: var(--orange-500); }
+
+        /* legal text dialog, inside the phone */
+        .legal {
+            position: absolute; inset: 0; z-index: 5; background: rgb(0 0 0 / .45);
+            display: flex; align-items: flex-end;
+        }
+        .legal .sheet {
+            width: 100%; max-height: 85%; overflow-y: auto; background: var(--card);
+            border-radius: 1.25rem 1.25rem 0 0; padding: 20px; display: flex; flex-direction: column; gap: 12px;
+        }
+        .legal h3 { margin: 0; font-size: 15px; }
+        .legal p { margin: 0; font-size: 14px; line-height: 1.5; white-space: pre-line; color: var(--gray-600); }
+
+        /* subscription offer */
+        .plan-card {
+            display: flex; flex-direction: column; gap: 4px; width: 100%; padding: 14px 16px; text-align: left;
+            background: var(--card); border: 1.5px solid var(--gray-200); border-radius: 1rem; cursor: pointer;
+        }
+        .plan-card.picked { border-color: var(--primary-900); }
+        .plan-card .price { font-size: 18px; font-weight: 700; }
+        .plan-card .tag { align-self: flex-start; font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--green-500); }
+
+        /* additional setup progress */
+        .setup-progress { display: flex; flex-direction: column; gap: 10px; }
+        .setup-progress ol { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+        .setup-progress li { display: flex; gap: 10px; align-items: center; font-size: 14px; }
+        .setup-progress .dot { width: 18px; height: 18px; border-radius: 999px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+        .setup-progress .dot.done { background: var(--green-500); }
+        .setup-progress .dot.running { background: var(--primary-900); }
+        .setup-progress .dot.pending { border: 1.5px dashed var(--gray-300); }
+        .setup-progress .bar { height: 6px; border-radius: 999px; background: var(--gray-200); overflow: hidden; }
+        .setup-progress .bar > div { height: 100%; background: var(--primary-900); transition: width .3s; }
+        .setup-progress .bar.indeterminate > div { width: 35%; animation: slide 1.2s ease-in-out infinite; }
+        @keyframes slide { 0% { margin-left: -35%; } 100% { margin-left: 100%; } }
+
         /* full screen image viewer, inside the phone */
         .viewer {
             position: absolute; inset: 0; z-index: 5; background: #000;
@@ -511,7 +559,8 @@
 </main>
 <div id="print-root"></div>
 <script>
-    const state = {app: null, view: null, ui: null, language: 'de', basket: []};
+    // `role` is who is holding the phone — it decides which consents may be ticked.
+    const state = {app: null, view: null, ui: null, language: 'de', basket: [], role: 'installer'};
     try {
         state.language = localStorage.getItem('enyo.sim.lang') || 'de';
     } catch {
@@ -741,7 +790,8 @@
         (outcomes.find(outcome => String(outcome.value).toLowerCase() === value) || {}).id || pickOutcome(outcomes, success);
 
     /** Decision blocks are the footer, never content — and pickers own their step. */
-    const DECISION_TYPES = ['choice', 'action', 'input', 'auth', 'additional-setup', 'device-select', 'eebus-device-select'];
+    const DECISION_TYPES = ['choice', 'action', 'input', 'auth', 'additional-setup', 'device-select', 'eebus-device-select',
+        'zigbee-pairing', 'subscription-offer', 'consent'];
 
     /** Fresh screen state whenever the step on screen changes, as remounting the runner would give. */
     const uiFor = view => {
@@ -754,7 +804,12 @@
             selectValues[block.id] = block.value || block.defaultValue || '';
         });
         const picker = input.kind === 'picker' ? (view.pickers || {})[input.blockId] : undefined;
-        const preselected = picker && input.autoSelectSingleMatch ? picker.preselectedKey : undefined;
+        const preselected = picker && input.autoSelectSingleMatch ? (picker.preselectedKeys || []) : [];
+        // Consents already in force start ticked; voluntary ones otherwise start unticked.
+        const consentTicks = {};
+        (input.consents || []).forEach(row => {
+            consentTicks[row.consentKey] = row.granted === true;
+        });
         return {
             key,
             selectedOption: '',
@@ -762,8 +817,13 @@
             inputError: input.kind === 'input' ? t(input.validationError) : '',
             setupValues: {},
             selectValues,
-            pickedId: (picker && picker.resolution && picker.resolution.key) || preselected || '',
-            preselectedId: preselected || '',
+            pickedIds: (picker && picker.resolution && picker.resolution.keys) || preselected,
+            preselectedIds: preselected,
+            consentTicks,
+            consentNote: '',
+            legal: null,
+            selectedPlan: '',
+            progress: null,
             running: false,
             waitingForCharger: false,
             authPending: false,
@@ -933,6 +993,119 @@
         .filter(field => field.required)
         .every(field => String(state.ui.setupValues[field.name] ?? '').trim());
 
+    // ---- consents (consent block, additional setup consentKeys) ---------------
+    const roleMayGive = row => row.declared && row.grantableBy.includes(state.role);
+    /** Every required consent ticked — what enables the CTA. An undeclared key never is. */
+    const consentsComplete = rows => (rows || []).every(row =>
+        row.declared ? (!row.required || state.ui.consentTicks[row.consentKey]) : false);
+    const ROLE_LABEL = {customer: 'Kunde', installer: 'Installateur'};
+
+    const renderConsentRows = (view, model, rows) => el('div', {class: 'app-col gap-3'}, rows.map(row => {
+        if (!row.declared) {
+            return el('div', {class: 'hint important'}, [
+                icon('exclamation-circle', 20),
+                el('span', {class: 'app-text', text: `Unbekannte Einwilligung „${row.consentKey}" — das Paket deklariert sie nicht.`}),
+            ]);
+        }
+        const on = state.ui.consentTicks[row.consentKey] === true;
+        const allowed = roleMayGive(row);
+        const summary = t(row.summary);
+        return el('div', {class: 'consent-row'}, [
+            el('button', {
+                type: 'button',
+                role: 'checkbox',
+                'aria-checked': on ? 'true' : 'false',
+                class: 'checkbox' + (on ? ' on' : ''),
+                disabled: !allowed,
+                onclick: () => {
+                    state.ui.consentTicks[row.consentKey] = !on;
+                    rerender();
+                },
+            }, on ? icon('check', 14, 'white') : null),
+            el('div', {class: 'app-col', style: 'gap:4px;min-width:0'}, [
+                el('span', {class: 'lbl'}, [t(row.label), row.required ? null : el('span', {class: 'opt', text: ' (optional)'})]),
+                summary ? el('span', {class: 'app-help', text: summary}) : null,
+                el('button', {type: 'button', class: 'legal-link', onclick: () => setUi({legal: row})}, t(row.title) || 'Rechtstext'),
+                allowed ? null : el('span', {
+                    class: 'role-note',
+                    text: `Nur ${row.grantableBy.map(role => ROLE_LABEL[role] || role).join(' oder ')} kann zustimmen.`
+                        + (row.required ? ' Die Einrichtung wartet hier, bis das passiert ist.' : ''),
+                }),
+            ]),
+        ]);
+    }));
+
+    const renderLegalDialog = row => el('div', {class: 'legal', onclick: event => event.target === event.currentTarget && setUi({legal: null})},
+        el('div', {class: 'sheet'}, [
+            el('div', {class: 'row', style: 'justify-content:space-between;flex-wrap:nowrap'}, [
+                el('h2', {class: 'app-h2', style: 'margin:0', text: t(row.title)}),
+                el('button', {type: 'button', class: 'icon-btn', 'aria-label': 'Schließen', onclick: () => setUi({legal: null})}, icon('x-mark', 20)),
+            ]),
+            el('span', {class: 'mono muted', text: `${row.consentKey} · Version ${row.version}`}),
+            ...((row.legalText && row.legalText.sections) || []).map(section => el('div', {class: 'app-col', style: 'gap:4px'}, [
+                el('h3', {text: t(section.heading)}),
+                el('p', {text: t(section.content)}),
+            ])),
+            ...((row.legalText && row.legalText.urls) || []).map(link => el('a', {
+                href: link.url, target: '_blank', rel: 'noopener', style: 'font-size:13px;font-weight:600;color:var(--blue-500)',
+                text: `Volltext (${link.language})`,
+            })),
+        ]));
+
+    // ---- subscription offer -------------------------------------------------
+    const storeEntryOf = (entries) => (entries || []).find(entry => entry.language === state.language)
+        || (entries || []).find(entry => entry.language === 'en') || (entries || [])[0] || {};
+    const INTERVAL_LABEL = {monthly: 'pro Monat', yearly: 'pro Jahr', 'one-time': 'einmalig'};
+    /** Customers see gross; the declaration is net. */
+    const grossPrice = price => `${(price.amountWithoutTax * 1.19).toFixed(2).replace('.', ',')} ${price.currency === 'EUR' ? '€' : price.currency}`;
+    const offerIsOptional = input => input.mode === 'optional';
+
+    const renderOffer = (view, input) => {
+        const hero = ((input.offerScreen && input.offerScreen.blocks) || []).find(block => block.type === 'hero');
+        const heroEntry = hero ? storeEntryOf(hero.storeEntry) : {};
+        const free = input.freeTier && offerIsOptional(input) ? storeEntryOf(input.freeTier.storeEntry) : null;
+        return el('div', {class: 'app-col gap-3', style: 'margin-top:8px'}, [
+            heroEntry.title ? el('h2', {class: 'app-h2', text: heroEntry.title}) : null,
+            heroEntry.subtitle ? el('p', {class: 'app-help', text: heroEntry.subtitle}) : null,
+            input.plans.length === 0 ? el('div', {class: 'picker-empty', text: 'Dieses Paket bietet hier keinen Plan an.'}) : null,
+            ...input.plans.map(plan => {
+                const entry = storeEntryOf(plan.storeEntry);
+                const on = state.ui.selectedPlan === plan.planKey;
+                const price = (plan.prices || [])[0];
+                return el('button', {type: 'button', class: 'plan-card' + (on ? ' picked' : ''), onclick: () => setUi({selectedPlan: plan.planKey})}, [
+                    plan.highlight ? el('span', {class: 'tag', text: plan.highlight}) : null,
+                    el('span', {style: 'font-size:16px;font-weight:700', text: entry.title || plan.planKey}),
+                    entry.shortDescription ? el('span', {class: 'app-help', text: entry.shortDescription}) : null,
+                    price ? el('span', {class: 'price', text: `${grossPrice(price)} ${INTERVAL_LABEL[plan.paymentInterval] || plan.paymentInterval}`
+                        + (plan.pricingModel === 'per-unit' ? ' je Gerät' : '')}) : null,
+                    plan.trialDays ? el('span', {class: 'app-help', text: `${plan.trialDays} Tage kostenlos testen`}) : null,
+                ]);
+            }),
+            free ? el('div', {class: 'app-card gap-1'}, [
+                el('span', {style: 'font-size:14px;font-weight:700', text: free.title || 'Basis'}),
+                el('span', {class: 'app-help', text: 'Kostenlos — ohne Abo weiter.'}),
+            ]) : null,
+        ]);
+    };
+
+    // ---- additional setup progress ------------------------------------------
+    const renderSetupProgress = progress => {
+        const phases = progress.phases || [];
+        const current = phases.findIndex(phase => phase.key === progress.phaseKey);
+        const known = typeof progress.percent === 'number';
+        return el('div', {class: 'setup-progress'}, [
+            el('div', {class: 'bar' + (known ? '' : ' indeterminate')}, el('div', {style: known ? `width:${progress.percent}%` : ''})),
+            phases.length ? el('ol', {}, phases.map((phase, index) => {
+                const glyph = progress.finished || (current >= 0 && index < current) ? 'done' : index === current ? 'running' : 'pending';
+                return el('li', {}, [
+                    el('span', {class: 'dot ' + glyph}, glyph === 'done' ? icon('check', 12, 'white') : null),
+                    el('span', {style: glyph === 'pending' ? 'color:var(--gray-400)' : 'font-weight:600', text: t(phase.label) || phase.key}),
+                ]);
+            })) : null,
+            progress.message ? el('p', {class: 'app-help', text: t(progress.message)}) : null,
+        ]);
+    };
+
     /** The input sections that sit in the scroll area, under the content blocks. */
     const renderInputBody = (view, model) => {
         const input = model.input;
@@ -986,7 +1159,21 @@
                     style: 'margin:0;font-size:14px;font-weight:500;color:var(--orange-500)',
                     text: t(input.message),
                 }) : null,
+                // Right above the CTA, as the host renders them.
+                input.consents.length ? renderConsentRows(view, model, input.consents) : null,
+                ui.consentNote ? el('p', {style: 'margin:0;font-size:14px;font-weight:500;color:var(--orange-500)', text: ui.consentNote}) : null,
             ]));
+        }
+
+        if (input.kind === 'consent') {
+            parts.push(el('div', {class: 'app-card gap-3', style: 'margin-top:8px'}, [
+                renderConsentRows(view, model, input.consents),
+                ui.consentNote ? el('p', {style: 'margin:0;font-size:14px;font-weight:500;color:var(--orange-500)', text: ui.consentNote}) : null,
+            ]));
+        }
+
+        if (input.kind === 'subscription-offer') {
+            parts.push(renderOffer(view, input));
         }
 
         if (input.kind === 'input') {
@@ -1056,23 +1243,37 @@
         const headline = t(input.headline);
         const shownHeadline = headline && headline !== t(model.step.title) ? headline : '';
         const description = t(input.description);
+        const multi = input.maxDevices > 1;
+        const toggle = key => {
+            const picked = state.ui.pickedIds;
+            if (!multi) return setUi({pickedIds: [key]});
+            if (picked.includes(key)) return setUi({pickedIds: picked.filter(entry => entry !== key)});
+            if (picked.length < input.maxDevices) setUi({pickedIds: [...picked, key]});
+        };
+        const emptyText = input.picker === 'eebus-device-select'
+            ? 'Es wurde kein passendes Gerät gefunden.'
+            : input.picker === 'zigbee-pairing'
+                ? 'Es hat sich noch kein passendes Gerät verbunden. Versetze das Gerät in den Pairing-Modus.'
+                : 'Es wurde kein Gerät gefunden. Prüf, ob das Gerät eingeschaltet ist und im selben Netzwerk hängt.';
         return el('div', {class: 'app-col gap-3', style: 'margin-top:20px'}, [
             shownHeadline ? el('h2', {class: 'app-h2', text: shownHeadline}) : null,
             description ? el('p', {style: 'margin:0;font-size:13px;line-height:1.375;color:var(--gray-500)', text: description}) : null,
+            input.picker === 'zigbee-pairing' ? el('p', {class: 'app-help', text:
+                `Das Netzwerk ist ${input.durationSeconds} Sekunden offen.` + (multi ? ` Bis zu ${input.maxDevices} Geräte auswählen.` : '')}) : null,
             picker.candidates.length === 0
-                ? el('div', {class: 'picker-empty', text: input.picker === 'eebus-device-select'
-                    ? 'Es wurde kein passendes Gerät gefunden.'
-                    : 'Es wurde kein Gerät gefunden. Prüf, ob das Gerät eingeschaltet ist und im selben Netzwerk hängt.'})
-                : el('div', {role: 'radiogroup', class: 'app-col gap-2'}, picker.candidates.map(candidate => {
-                    const on = state.ui.pickedId === candidate.key;
+                ? el('div', {class: 'picker-empty', text: emptyText})
+                : el('div', {role: multi ? 'group' : 'radiogroup', class: 'app-col gap-2'}, picker.candidates.map(candidate => {
+                    const on = state.ui.pickedIds.includes(candidate.key);
                     return el('button', {
                         type: 'button',
-                        role: 'radio',
+                        role: multi ? 'checkbox' : 'radio',
                         'aria-checked': on ? 'true' : 'false',
                         class: 'picker-row' + (on ? ' picked' : ''),
-                        onclick: () => setUi({pickedId: candidate.key}),
+                        onclick: () => toggle(candidate.key),
                     }, [
-                        el('span', {class: 'radio' + (on ? ' on' : '')}),
+                        multi
+                            ? el('span', {class: 'checkbox' + (on ? ' on' : ''), style: 'width:20px;height:20px'}, on ? icon('check', 12, 'white') : null)
+                            : el('span', {class: 'radio' + (on ? ' on' : '')}),
                         el('span', {class: 'circle', style: 'width:36px;height:36px;background:var(--gray-100)'},
                             icon('grid', 20, 'var(--primary-900)')),
                         el('span', {style: 'min-width:0;flex:1'}, [
@@ -1134,27 +1335,80 @@
         api(`/api/runs/${view.runId}/input`, {
             method: 'POST',
             body: JSON.stringify({blockId: input.blockId, value, outcomeId: outcome && outcome.id, label: outcome && outcome.value}),
-        }).then(showView).catch(fail);
+        }).then(next => {
+            showView(next);
+            // A validated input the app rejected: same step, the app's message, no branch.
+            const rejected = next.renderModel.input.kind === 'input' && next.renderModel.input.validationError;
+            if (state.ui && rejected) setUi({running: false, inputError: t(next.renderModel.input.validationError)});
+        }).catch(fail);
     };
 
+    /** The answers to a step's consent checkboxes, as the CTA sends them. */
+    const consentAnswers = rows => Object.fromEntries((rows || []).filter(row => row.declared)
+        .map(row => [row.consentKey, state.ui.consentTicks[row.consentKey] === true]));
+
     const runSetup = (view, input) => {
-        setUi({running: true});
+        const progress = input.progressPhases ? {phases: input.progressPhases, finished: false} : null;
+        setUi({running: true, consentNote: '', progress});
+        const key = state.ui.key;
+        // `reportSetupProgress()` arrives while the request is open: poll for it.
+        const poll = setInterval(() => {
+            api(`/api/runs/${view.runId}/progress`).then(all => {
+                if (!state.ui || state.ui.key !== key || !state.ui.running) return;
+                if (all[input.blockId]) {
+                    state.ui.progress = all[input.blockId];
+                    refreshFooter(view, view.renderModel);
+                }
+            }).catch(() => undefined);
+        }, 400);
         api(`/api/runs/${view.runId}/setup`, {
             method: 'POST',
             body: JSON.stringify({
                 blockId: input.blockId,
                 values: input.fields.map(field => ({name: field.name, value: String(state.ui.setupValues[field.name] ?? '')})),
+                consents: consentAnswers(input.consents),
+                role: state.role,
             }),
-        }).then(body => showView(body.view)).catch(fail);
+        }).then(body => {
+            clearInterval(poll);
+            showView(body.view);
+        }).catch(error => {
+            clearInterval(poll);
+            fail(error);
+        });
+    };
+
+    const giveConsent = (view, input) => {
+        setUi({running: true, consentNote: ''});
+        api(`/api/runs/${view.runId}/consent`, {
+            method: 'POST',
+            body: JSON.stringify({blockId: input.blockId, answers: consentAnswers(input.consents), role: state.role}),
+        }).then(body => {
+            showView(body.view);
+            if (state.ui && !body.resolution.given) {
+                setUi({running: false, consentNote: 'Es fehlt noch eine erforderliche Zustimmung. Die Einrichtung geht weiter, sobald sie vorliegt.'});
+            }
+        }).catch(fail);
+    };
+
+    const subscribePlan = (view, input) => {
+        if (!state.ui.selectedPlan) return;
+        setUi({running: true});
+        api(`/api/runs/${view.runId}/subscribe`, {
+            method: 'POST',
+            body: JSON.stringify({blockId: input.blockId, planKey: state.ui.selectedPlan}),
+        }).then(showView).catch(fail);
     };
 
     const commitPick = (view, input) => {
-        const key = state.ui.pickedId;
-        if (!key) return;
+        const keys = state.ui.pickedIds;
+        if (!keys.length) return;
+        const preselected = state.ui.preselectedIds;
+        const autoSelected = preselected.length === keys.length && keys.every(key => preselected.includes(key));
         setUi({running: true});
         api(`/api/runs/${view.runId}/pick`, {
             method: 'POST',
-            body: JSON.stringify({blockId: input.blockId, key, autoSelected: key === state.ui.preselectedId}),
+            body: JSON.stringify({blockId: input.blockId, keys, autoSelected}),
         }).then(body => showView(body.view)).catch(fail);
     };
 
@@ -1187,6 +1441,9 @@
                 aButton('subtle', 'Es klappt nicht', () => stopWaitingForCharger(input)),
             ];
         }
+        if (ui.running && input.kind === 'additional-setup' && ui.progress) {
+            return [renderSetupProgress(ui.progress)];
+        }
         if (ui.running && input.kind !== 'picker') {
             return [el('div', {class: 'running'}, [spinner(22), 'Verbindung wird geprüft'])];
         }
@@ -1208,14 +1465,37 @@
                     {disabled: !isValidEntry(input) || !selectsOk})];
             case 'additional-setup':
                 return [
-                    aButton('primary', t(input.cta), () => runSetup(view, input), {disabled: !setupComplete(input) || !selectsOk}),
+                    aButton('primary', t(input.cta), () => runSetup(view, input),
+                        {disabled: !setupComplete(input) || !selectsOk || !consentsComplete(input.consents)}),
                     input.skip ? aButton('subtle', t(input.skip.label),
                         () => answer({kind: 'skip', blockId: input.blockId, skipId: input.skip.id}, input.skip.id)) : null,
                 ];
+            case 'consent': {
+                const declined = input.outcomes.find(outcome => outcome.value === 'declined');
+                return [
+                    aButton('primary', t(input.cta), () => giveConsent(view, input),
+                        {disabled: !consentsComplete(input.consents) || !selectsOk}),
+                    // Without a wired `declined`, not agreeing is leaving the guide.
+                    declined
+                        ? aButton('subtle', t(declined.label) || 'Nicht zustimmen',
+                            () => answer({kind: 'outcome', blockId: input.blockId, outcomeId: declined.id}, 'declined'))
+                        : null,
+                ];
+            }
+            case 'subscription-offer': {
+                const declined = input.outcomes.find(outcome => outcome.value === 'declined');
+                return [
+                    aButton('primary', 'Jetzt buchen', () => subscribePlan(view, input), {disabled: !ui.selectedPlan || !selectsOk}),
+                    offerIsOptional(input) && declined
+                        ? aButton('subtle', t(declined.label) || 'Ohne Abo weiter',
+                            () => answer({kind: 'outcome', blockId: input.blockId, outcomeId: declined.id}, 'declined'))
+                        : null,
+                ];
+            }
             case 'picker':
                 return [
                     aButton('primary', input.label ? t(input.label) : 'Weiter', () => commitPick(view, input),
-                        {disabled: !ui.pickedId || !selectsOk, loading: ui.running}),
+                        {disabled: !ui.pickedIds.length || !selectsOk, loading: ui.running}),
                     aButton('subtle', 'Mein Gerät ist nicht dabei', () => {
                         const outcomeId = outcomeByValue(input.outcomes, 'not-found', false);
                         if (outcomeId) answer({kind: 'outcome', blockId: input.blockId, outcomeId}, 'not-found');
@@ -1385,6 +1665,9 @@
             screen = renderStepScreen(view, model);
         }
         screen.filter(Boolean).forEach(part => device.appendChild(part));
+        if (state.ui.legal) {
+            device.appendChild(renderLegalDialog(state.ui.legal));
+        }
         if (state.ui.viewer) {
             device.appendChild(el('div', {class: 'viewer', onclick: () => setUi({viewer: null})}, [
                 el('button', {type: 'button', class: 'a-btn icon-white close', 'aria-label': 'Schließen', style: 'border:0'},
@@ -1413,6 +1696,55 @@
         ...children.filter(Boolean),
     ]);
     const note = (text, tone = '') => el('p', {class: 'insp-note ' + tone, text});
+
+    /** Each consent of a step, with what enyo holds and whether the acting role may tick it. */
+    const renderConsentStatus = rows => el('div', {}, rows.map(row => el('div', {style: 'margin-bottom:4px'}, [
+        el('span', {class: 'badge mono', text: row.consentKey + (row.version ? ' v' + row.version : '')}),
+        !row.declared ? el('span', {class: 'badge err', text: 'not declared'}) : null,
+        row.declared ? el('span', {class: 'badge', text: row.required ? 'required' : 'voluntary'}) : null,
+        row.declared ? el('span', {class: 'badge ' + (row.granted ? 'ok' : ''), text: row.granted ? 'in force (' + row.grantedBy + ')' : 'not given'}) : null,
+        row.declared && !roleMayGive(row) ? el('span', {class: 'badge warn', text: 'only ' + row.grantableBy.join('/')}) : null,
+    ])));
+
+    /** Who holds the phone, and every declared consent as useConsent() reports it. */
+    const renderConsentPanel = view => {
+        const declared = state.app.consents || [];
+        const roleSelect = el('label', {class: 'row', style: 'font-size:12px;gap:6px'}, [
+            'Acting as',
+            aSelect(state.role, [{value: 'installer', text: 'installer'}, {value: 'customer', text: 'customer'}], '', value => {
+                state.role = value;
+                rerender();
+            }),
+        ]);
+        if (!declared.length) {
+            return section('Consents', [roleSelect, note('The package declares no consents — useConsent().getConsents() answers [].')]);
+        }
+        return section('Consents · useConsent()', [
+            roleSelect,
+            note('Tick or withdraw one here as the customer would in their own app; the app\'s listenForConsentChanges listeners hear it.'),
+            ...declared.map(consent => {
+                const current = (view.consentStates || []).find(entry => entry.consentKey === consent.consentKey) || {};
+                const inForce = current.granted === true && current.version === consent.version;
+                return el('label', {class: 'row', style: 'font-size:12px;gap:6px;margin-top:4px'}, [
+                    el('input', {
+                        type: 'checkbox',
+                        checked: inForce,
+                        onchange: event => api(`/api/consents/${encodeURIComponent(consent.consentKey)}`, {
+                            method: 'POST',
+                            body: JSON.stringify({granted: event.target.checked, role: state.role}),
+                        }).then(() => api(`/api/runs/${view.runId}`)).then(next => {
+                            // A fresh screen state, so the step's checkboxes start from what enyo now holds.
+                            state.ui = null;
+                            showView(next);
+                        }).catch(fail),
+                    }),
+                    el('span', {class: 'mono', text: `${consent.consentKey} v${consent.version}`}),
+                    el('span', {class: 'muted', text: (consent.required ? 'required' : 'voluntary') + ' · ' + consent.grantableBy.join('+')
+                        + (current.grantedBy ? ' · by ' + current.grantedBy : '')}),
+                ]);
+            }),
+        ]);
+    };
 
     const renderInspector = view => {
         const model = view.renderModel;
@@ -1460,7 +1792,33 @@
                 case 'input':
                     parts.push(section('Simulated device check · ' + input.valueType, [
                         note('The device test cannot run here. Pick its verdict; the preview\'s button submits the typed value with it.'),
+                        input.validated
+                            ? note(state.app.handlers.inputValidation
+                                ? 'validated: the value goes to your input validation handler first. A rejection keeps the installer on the step with your message — no branch.'
+                                : 'validated, but no input validation handler is registered — every value is accepted unchecked.',
+                            state.app.handlers.inputValidation ? '' : 'warn')
+                            : null,
                         outcomePicker(input.outcomes, [{id: '__unreachable', label: 'Request fails (no device reachable)', value: ''}]),
+                    ]));
+                    break;
+                case 'consent':
+                    parts.push(section('Consent', [
+                        note('The host records every answer with the version and your role; „given" fires only once every required consent is in force.'),
+                        renderConsentStatus(input.consents),
+                        input.outcomes.some(outcome => outcome.value === 'declined')
+                            ? null
+                            : note('No „declined" outcome: a person who will not agree leaves the guide, and the run resumes on this step.'),
+                    ]));
+                    break;
+                case 'subscription-offer':
+                    parts.push(section('Subscription offer', [
+                        note(`Mode: ${input.mode || 'not declared'} · ${input.plans.length} plan(s) offered. `
+                            + 'There is no checkout here: „Jetzt buchen" always succeeds and fires „subscribed", as the server does once it holds the subscription.'),
+                        input.unknownPlanKeys.length ? note('planKeys the package does not declare: ' + input.unknownPlanKeys.join(', '), 'err') : null,
+                        !state.app.hasDefinition ? note('No package config was found, so no plans can be shown. Start the simulator with --file.', 'warn') : null,
+                        input.mode === 'required' && input.outcomes.some(outcome => outcome.value === 'declined')
+                            ? note('A required offer must not wire „declined".', 'err') : null,
+                        view.subscriptions.length ? el('span', {class: 'badge ok', text: 'bought: ' + view.subscriptions.join(', ')}) : null,
                     ]));
                     break;
                 case 'auth':
@@ -1477,13 +1835,25 @@
                     break;
                 case 'additional-setup': {
                     const resolution = view.setups[input.blockId];
+                    const progress = (view.progress || {})[input.blockId];
                     parts.push(section('Setup · ' + input.setupKey, [
-                        note('The fields go to your additional-setup handler; its verdict picks the branch.'),
+                        note('The fields go to your additional-setup handler; its verdict picks the branch. '
+                            + `Budget: ${input.maxDurationMs ? input.maxDurationMs + ' ms (maxDurationMs)' : '60000 ms (SDK default)'}.`),
+                        input.consents.length ? renderConsentStatus(input.consents) : null,
+                        input.progressPhases ? note('Phases: ' + input.progressPhases.map(phase => phase.key).join(' → ')) : null,
                         resolution ? el('div', {}, [
                             el('span', {class: 'badge ' + (resolution.fellBackToFailed ? 'err' : 'ok'), text: 'last verdict: ' + (resolution.rawOutcome || 'failed')}),
                             resolution.note ? note(resolution.note) : null,
                             resolution.detail ? el('div', {class: 'mono', text: resolution.detail}) : null,
+                            resolution.consents ? note('request.consents: ' + resolution.consents.map(c => `${c.consentKey}=${c.granted}`).join(', ')) : null,
                         ]) : null,
+                        progress && progress.reports.length ? el('div', {}, progress.reports.map((report, index) => el('div', {style: 'margin-top:6px'}, [
+                            el('span', {class: 'badge ' + (report.errors.length ? 'err' : report.warnings.length ? 'warn' : 'ok'),
+                                text: `report ${index + 1}` + (report.progress.phaseKey ? ' · ' + report.progress.phaseKey : '')
+                                    + (typeof report.progress.percent === 'number' ? ' · ' + report.progress.percent + ' %' : '')}),
+                            ...report.errors.map(error => note(error, 'err')),
+                            ...report.warnings.map(warning => note(warning, 'warn')),
+                        ]))) : null,
                     ]));
                     break;
                 }
@@ -1491,12 +1861,17 @@
                     const picker = (view.pickers || {})[input.blockId] || {candidates: []};
                     const filter = input.picker === 'eebus-device-select'
                         ? (input.deviceTypes ? 'deviceTypes: ' + input.deviceTypes.join(', ') : 'every peer')
-                        : (input.detectedAt ? 'detectedAt: ' + input.detectedAt.join(', ') : 'every device');
+                        : input.picker === 'zigbee-pairing'
+                            ? [input.manufacturerNames ? 'manufacturerNames: ' + input.manufacturerNames.join(', ') : null,
+                                input.modelIds ? 'modelIds: ' + input.modelIds.join(', ') : null,
+                                'maxDevices: ' + input.maxDevices].filter(Boolean).join(' · ')
+                            : (input.detectedAt ? 'detectedAt: ' + input.detectedAt.join(', ') : 'every device');
                     const resolution = picker.resolution;
                     parts.push(section('Picker · ' + input.picker, [
                         note(`${picker.candidates.length} simulated candidate(s) · ${filter}`),
-                        picker.preselectedKey
-                            ? note('One candidate matches, so the app highlights it — the installer still confirms it, and the handler hears autoSelected: true.')
+                        picker.preselectedKeys
+                            ? note((picker.preselectedKeys.length === 1 ? 'One candidate matches' : `${picker.preselectedKeys.length} candidates match maxDevices`)
+                                + ', so the app highlights it — the installer still confirms it, and the handler hears autoSelected: true.')
                             : null,
                         picker.candidates.length === 0 ? note('Nothing matches: „Mein Gerät ist nicht dabei" is the way out.', 'warn') : null,
                         resolution ? el('div', {}, [
@@ -1552,6 +1927,8 @@
                 el('div', {class: 'row', style: 'margin-top:10px'}, el('button', {class: 'tool', onclick: () => resetRun(view)}, 'Walk it again')),
             ]));
         }
+
+        parts.push(renderConsentPanel(view));
 
         document.getElementById('inspector-body').replaceChildren(...parts);
     };
@@ -1628,7 +2005,7 @@
      * buttons — are left out, as is the full-screen image viewer.
      */
     const SNAPSHOT_STRIP = [
-        '.app-topbar', '.app-footer', '.step-input', '.viewer',
+        '.app-topbar', '.app-footer', '.step-input', '.viewer', '.legal',
         'input', 'textarea', 'select', '.a-select-wrap', '.running', '.spinner',
         'button.a-btn', 'button.text-link', '.icon-btn', '.image-block .zoom',
     ].join(', ');

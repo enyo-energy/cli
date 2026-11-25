@@ -85,4 +85,33 @@ export default defineEnergyAppPackage({
     //         {type: 'plans'},
     //     ],
     // },
+    //
+    // Optional (SDK ≥ 1.80): consents a person agrees to — declared once here,
+    // asked for by key in a guide's `consent` block or an additional-setup
+    // block's `consentKeys`, and read by the app through useConsent(). Bump
+    // `version` whenever the meaning of the text changes: earlier answers then
+    // stop counting. `enyo release` validates them and aborts on errors.
+    // Needs EnyoConsentGrantorEnum imported from the SDK.
+    //
+    // consents: [{
+    //     consentKey: 'backup-and-developer-mode',
+    //     version: '1',
+    //     required: true,
+    //     grantableBy: [EnyoConsentGrantorEnum.Customer, EnyoConsentGrantorEnum.Installer],
+    //     label: [
+    //         {language: 'de', value: 'Ich erlaube enyo, ein Backup zu erstellen und den Entwicklermodus einzuschalten.'},
+    //         {language: 'en', value: 'I allow enyo to create a backup and switch on developer mode.'},
+    //     ],
+    //     title: [
+    //         {language: 'de', value: 'Backup und Entwicklermodus'},
+    //         {language: 'en', value: 'Backup and developer mode'},
+    //     ],
+    //     legalText: {
+    //         sections: [{
+    //             heading: [{language: 'de', value: '1. Backup'}, {language: 'en', value: '1. Backup'}],
+    //             content: [{language: 'de', value: '…'}, {language: 'en', value: '…'}],
+    //         }],
+    //         urls: [{language: 'de', url: 'https://example.com/agb'}], // optional
+    //     },
+    // }],
 })

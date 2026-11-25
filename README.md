@@ -110,6 +110,26 @@ The same `validatePackageSubscriptionPlans()` call checks all of it, and the rel
 prints a summary, e.g. `🛍️ Offer screen declared — 3 features, free tier, blocks: hero →
 comparison → hint → plans`.
 
+### Consents (`consents`)
+
+SDK 1.80 lets a package declare the consents a person agrees to — checkbox label,
+dialog title, full legal text, whether it is required and who may give it (customer,
+installer or both). Guides ask for them by key (a `consent` block, or `consentKeys` on
+an additional-setup block), and the app reads the answers with `useConsent()`.
+
+`enyo release` and `enyo draft-release` check them with the SDK's
+`validatePackageConsents()` and abort on errors. Warnings, such as a required consent
+only the installer may give, are printed and do not block. The release prints a summary,
+e.g. `🔏 1 consent(s): backup-and-developer-mode v1 (required, customer+installer)`.
+Consents are part of the release fingerprint, so a new consent `version` is always a
+new release. Bump the version whenever the meaning of the text changes, because earlier
+answers stop counting.
+
+`enyo onboarding-sim` validates guides against the declared consents (an unknown
+`consentKey` is an error), renders consent checkboxes with their legal text, and lets
+you act as installer or customer, or tick consents directly as the customer would in
+their own app.
+
 ## Draft releases
 
 Try a build on one enyo Box before you release it to everyone. **Only internal

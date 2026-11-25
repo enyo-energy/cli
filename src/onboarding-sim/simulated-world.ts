@@ -24,8 +24,13 @@
 import type {EnyoOcppAvailableConnectionDetails} from '@enyo-energy/energy-app-sdk/dist/packages/energy-app-ocpp';
 import type {EnyoNetworkDevice} from '@enyo-energy/energy-app-sdk/dist/types/enyo-network-device';
 import {EnyoNetworkDeviceDetectedAtEnum} from '@enyo-energy/energy-app-sdk/dist/types/enyo-network-device.js';
-import type {EnyoOnboardingV2EebusPeer} from '@enyo-energy/energy-app-sdk';
-import {EnyoEebusDeviceTypeEnum} from '@enyo-energy/energy-app-sdk';
+import type {EnyoOnboardingV2EebusPeer, EnyoZigbeeDevice} from '@enyo-energy/energy-app-sdk';
+import {
+    EnyoEebusDeviceTypeEnum,
+    EnyoZigbeeDeviceRoleEnum,
+    EnyoZigbeeInterviewStateEnum,
+    EnyoZigbeePowerSourceEnum,
+} from '@enyo-energy/energy-app-sdk';
 
 /** The simulated enyo hub — the thing the app runs on. */
 export const SIMULATED_HUB = {
@@ -199,3 +204,68 @@ export const simulatedEebusPeersFor = (deviceTypes?: EnyoEebusDeviceTypeEnum[]):
     const wanted = new Set<EnyoEebusDeviceTypeEnum>(deviceTypes);
     return SIMULATED_EEBUS_PEERS.filter(peer => peer.deviceType !== undefined && wanted.has(peer.deviceType));
 };
+
+/**
+ * The Zigbee devices that join the network a `zigbee-pairing` block opens.
+ *
+ * Three, so both halves of the block's filters show: two from one vendor with
+ * different models (a `modelIds` filter separates them), and one that reports
+ * no manufacturer name at all — the device any `manufacturerNames` filter must
+ * exclude rather than wave through.
+ */
+export const SIMULATED_ZIGBEE_DEVICES: EnyoZigbeeDevice[] = [
+    {
+        ieeeAddress: '0x00158d0001a2b3c4',
+        networkAddress: 0x1a2b,
+        name: 'Sim Thermostat',
+        manufacturerName: 'SimTherm',
+        modelId: 'ST-100',
+        powerSource: EnyoZigbeePowerSourceEnum.Battery,
+        role: EnyoZigbeeDeviceRoleEnum.EndDevice,
+        interviewState: EnyoZigbeeInterviewStateEnum.Completed,
+        // Basic, Power configuration, Thermostat.
+        endpoints: [{id: 1, profileId: 0x0104, deviceId: 0x0301, inputClusters: [0x0000, 0x0001, 0x0201], outputClusters: []}],
+        linkQuality: 180,
+    },
+    {
+        ieeeAddress: '0x00158d0001a2b3c5',
+        networkAddress: 0x1a2c,
+        name: 'Sim Smart Plug',
+        manufacturerName: 'SimTherm',
+        modelId: 'SP-200',
+        powerSource: EnyoZigbeePowerSourceEnum.Mains,
+        role: EnyoZigbeeDeviceRoleEnum.Router,
+        interviewState: EnyoZigbeeInterviewStateEnum.Completed,
+        // Basic, On/Off, Electrical measurement, Metering.
+        endpoints: [{id: 1, profileId: 0x0104, deviceId: 0x0051, inputClusters: [0x0000, 0x0006, 0x0b04, 0x0702], outputClusters: []}],
+        linkQuality: 220,
+    },
+    {
+        ieeeAddress: '0x00124b0009f8e7d6',
+        networkAddress: 0x2c3d,
+        modelId: 'unknown-sensor',
+        powerSource: EnyoZigbeePowerSourceEnum.Battery,
+        role: EnyoZigbeeDeviceRoleEnum.EndDevice,
+        interviewState: EnyoZigbeeInterviewStateEnum.Completed,
+        endpoints: [{id: 1, inputClusters: [0x0000, 0x0402], outputClusters: []}],
+        linkQuality: 90,
+    },
+];
+
+/** Basic-cluster strings compare case-insensitively and trimmed, otherwise exactly. */
+const normalized = (value: string): string => value.trim().toLowerCase();
+
+const matchesFilter = (value: string | undefined, filter: string[] | undefined): boolean =>
+    !filter || (value !== undefined && filter.map(normalized).includes(normalized(value)));
+
+/**
+ * The devices a `zigbee-pairing` block offers, after its filters.
+ *
+ * Mirrors the block's documented rules: both filters are conjunctive, a device
+ * reporting no value survives an omitted filter and is excluded by any filter
+ * present, so a guide never pairs something it did not ask for.
+ */
+export const simulatedZigbeeDevicesFor = (manufacturerNames?: string[], modelIds?: string[]): EnyoZigbeeDevice[] =>
+    SIMULATED_ZIGBEE_DEVICES.filter(
+        device => matchesFilter(device.manufacturerName, manufacturerNames) && matchesFilter(device.modelId, modelIds)
+    );

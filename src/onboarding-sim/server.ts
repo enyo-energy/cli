@@ -10,7 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import express from 'express';
 import type {Express, Request, Response} from 'express';
-import {EnyoOnboardingV2TransitionSourceKind} from '@enyo-energy/energy-app-sdk';
+import {EnyoConsentGrantorEnum, EnyoOnboardingV2TransitionSourceKind} from '@enyo-energy/energy-app-sdk';
 import type {
     EnyoOnboardingV2SetupFieldValue,
     EnyoOnboardingV2TransitionSource,
@@ -70,16 +70,34 @@ export interface SimulatorServerOptions {
 
 const asError = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
+/** The role the browser acts in; anything else is the installer, who walks the guide on a device. */
+const asRole = (value: unknown): EnyoConsentGrantorEnum =>
+    value === EnyoConsentGrantorEnum.Customer ? EnyoConsentGrantorEnum.Customer : EnyoConsentGrantorEnum.Installer;
+
+const asAnswers = (value: unknown): Record<string, boolean> =>
+    value && typeof value === 'object'
+        ? Object.fromEntries(
+              Object.entries(value as Record<string, unknown>).filter(
+                  (entry): entry is [string, boolean] => typeof entry[1] === 'boolean'
+              )
+          )
+        : {};
+
 export const createSimulatorServer = (options: SimulatorServerOptions): Express => {
-    const store = new RunStore(options.app);
+    const store = new RunStore(options.app, (message, level) =>
+        options.log.push({at: options.log.elapsed(), kind: 'sim', level, message})
+    );
     const server = express();
     server.use(express.json({limit: '1mb'}));
 
     const handle = (fn: (request: Request, response: Response) => Promise<void> | void) =>
         (request: Request, response: Response): void => {
-            Promise.resolve(fn(request, response)).catch((error: unknown) => {
-                response.status(400).json({error: asError(error)});
-            });
+            // Inside `then`, so a handler that throws synchronously is answered as JSON too.
+            Promise.resolve()
+                .then(() => fn(request, response))
+                .catch((error: unknown) => {
+                    response.status(400).json({error: asError(error)});
+                });
         };
 
     server.get('/', (_request, response) => {
@@ -102,7 +120,16 @@ export const createSimulatorServer = (options: SimulatorServerOptions): Express 
                 additionalSetup: Boolean(app.mock.state.additionalSetupHandler),
                 deviceSelect: Boolean(app.mock.state.deviceSelectHandler),
                 eebusDeviceSelect: Boolean(app.mock.state.eebusDeviceSelectHandler),
+                zigbeePairing: Boolean(app.mock.state.zigbeePairingHandler),
+                inputValidation: Boolean(app.mock.state.inputValidationHandler),
             },
+            // Whether a package config was found: a subscription offer has nothing to show without it.
+            hasDefinition: Boolean(app.definition),
+            // Declared consents with what enyo holds for each — the inspector's toggles.
+            consents: app.consents.map(consent => ({
+                ...consent,
+                state: app.mock.state.consentStates.find(state => state.consentKey === consent.consentKey),
+            })),
             runActions: app.mock.state.runActions,
             variants: START_VARIANTS.map(variant => ({
                 variant,
@@ -189,7 +216,10 @@ export const createSimulatorServer = (options: SimulatorServerOptions): Express 
             return;
         }
         store.recordInput(request.params.id, body.blockId, body.value);
-        if (body.outcomeId) {
+        // A `validated` input asks the app first; a rejection keeps the
+        // installer on the step with the app's message, and is no branch.
+        const check = await store.checkInputWithApp(request.params.id, body.blockId, body.value);
+        if (check.valid && body.outcomeId) {
             store.answer(
                 request.params.id,
                 {
@@ -204,12 +234,61 @@ export const createSimulatorServer = (options: SimulatorServerOptions): Express 
     }));
 
     server.post('/api/runs/:id/setup', handle(async (request, response) => {
-        const body = request.body as { blockId?: string; values?: EnyoOnboardingV2SetupFieldValue[] };
+        const body = request.body as {
+            blockId?: string;
+            values?: EnyoOnboardingV2SetupFieldValue[];
+            consents?: Record<string, boolean>;
+            role?: string;
+        };
         if (!body.blockId) {
             throw new Error('blockId is required');
         }
-        const resolution = await store.runAdditionalSetup(request.params.id, body.blockId, body.values ?? []);
+        const resolution = await store.runAdditionalSetup(
+            request.params.id,
+            body.blockId,
+            body.values ?? [],
+            asAnswers(body.consents),
+            asRole(body.role)
+        );
         response.json({resolution, view: await store.view(request.params.id)});
+    }));
+
+    /** Polled by the browser while a setup request is open — `reportSetupProgress()` as it arrives. */
+    server.get('/api/runs/:id/progress', handle((request, response) => {
+        response.json(store.progressOf(request.params.id));
+    }));
+
+    /**
+     * A consent block's CTA: the ticked answers are recorded in the acting role,
+     * and `given` fires once every required consent is in force. `declined` is an
+     * ordinary outcome answer and goes through `/answer`.
+     */
+    server.post('/api/runs/:id/consent', handle(async (request, response) => {
+        const body = request.body as { blockId?: string; answers?: Record<string, boolean>; role?: string };
+        if (!body.blockId) {
+            throw new Error('blockId is required');
+        }
+        const resolution = store.giveConsents(request.params.id, body.blockId, asAnswers(body.answers), asRole(body.role));
+        response.json({resolution, view: await store.view(request.params.id)});
+    }));
+
+    /** A subscription-offer step: a simulated checkout that always succeeds. */
+    server.post('/api/runs/:id/subscribe', handle(async (request, response) => {
+        const body = request.body as { blockId?: string; planKey?: string };
+        if (!body.blockId || !body.planKey) {
+            throw new Error('blockId and planKey are required');
+        }
+        store.subscribe(request.params.id, body.blockId, body.planKey);
+        response.json(await store.view(request.params.id));
+    }));
+
+    /** Give or withdraw a declared consent outside any step — the customer in their own app. */
+    server.post('/api/consents/:key', handle((request, response) => {
+        const body = request.body as { granted?: boolean; role?: string };
+        if (typeof body.granted !== 'boolean') {
+            throw new Error('granted is required');
+        }
+        response.json(store.setConsent(request.params.key, body.granted, asRole(body.role)));
     }));
 
     /**
@@ -222,11 +301,12 @@ export const createSimulatorServer = (options: SimulatorServerOptions): Express 
      * behind them and no handler to call.
      */
     server.post('/api/runs/:id/pick', handle(async (request, response) => {
-        const body = request.body as { blockId?: string; key?: string; autoSelected?: boolean };
-        if (!body.blockId || !body.key) {
-            throw new Error('blockId and key are required');
+        const body = request.body as { blockId?: string; key?: string; keys?: string[]; autoSelected?: boolean };
+        const keys = Array.isArray(body.keys) ? body.keys.filter(key => typeof key === 'string') : body.key ? [body.key] : [];
+        if (!body.blockId || keys.length === 0) {
+            throw new Error('blockId and key (or keys) are required');
         }
-        const resolution = await store.pick(request.params.id, body.blockId, body.key, body.autoSelected === true);
+        const resolution = await store.pick(request.params.id, body.blockId, keys, body.autoSelected === true);
         response.json({resolution, view: await store.view(request.params.id)});
     }));
 

@@ -50,6 +50,11 @@ const INTERACTIVE_TYPES: EnyoOnboardingV2BlockType[] = [
     // `decisionBlock` — "the first interactive block" — unambiguous here.
     EnyoOnboardingV2BlockType.DeviceSelect,
     EnyoOnboardingV2BlockType.EebusDeviceSelect,
+    EnyoOnboardingV2BlockType.ZigbeePairing,
+    // Server-gated like `auth`: each owns its step and fires an outcome only
+    // once enyo holds the purchase or the recorded answers.
+    EnyoOnboardingV2BlockType.SubscriptionOffer,
+    EnyoOnboardingV2BlockType.Consent,
 ];
 
 export const isInteractiveBlock = (block: EnyoOnboardingV2Block): block is EnyoOnboardingV2InteractiveBlock =>
